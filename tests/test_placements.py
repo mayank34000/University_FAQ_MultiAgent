@@ -198,3 +198,53 @@ class TestLoadPlacementData:
             for field in required_fields:
                 assert field in record, f"Missing field '{field}' in record: {record.get('company', 'unknown')}"
 
+
+class TestPhase2Features:
+    def test_ctc_threshold(self):
+        response = handle('Which companies offered more than 10 LPA in Batch 2027?')
+        assert 'Found' in response['answer']
+        assert len(response['sources']) > 0
+        # Source IDs for Batch 2027 start with 'b27'
+        assert any('b27' in s for s in response['sources'])
+
+    def test_highest_lowest_ctc(self):
+        response = handle('What was the highest CTC offered by Microsoft?')
+        assert 'Highest' in response['answer']
+        assert '52' in response['answer']
+
+        response2 = handle('What is the lowest CTC across all companies?')
+        assert 'Lowest' in response2['answer']
+
+    def test_average_ctc(self):
+        response = handle('What is the average CTC for Google?')
+        assert 'average' in response['answer'].lower()
+
+    def test_batch_wise_comparison(self):
+        response = handle('Batch comparison for placements')
+        assert 'Batch-wise Comparison' in response['answer']
+        assert 'Batch 2026' in response['answer']
+        assert 'Batch 2027' in response['answer']
+
+    def test_role_and_location_filters(self):
+        response = handle('Show software roles in Bangalore')
+        ans = response['answer'].lower()
+        assert 'bangalore' in ans or 'bengaluru' in ans
+        
+    def test_company_name_variations(self):
+        response = handle('What did samsung electro mechanics offer?')
+        ans = response['answer']
+        assert 'Samsung' in ans
+
+    def test_missing_data_handling(self):
+        response = handle('Which companies offered internships with PPO opportunities?')
+        assert response['agent'] == 'placements'
+        assert 'PPO' in response['answer'] and 'not tracked' in response['answer'].lower()
+
+    def test_ambiguous_queries(self):
+        response = handle('tell me')
+        assert 'No matching' in response['answer'] or 'Please provide a valid question' in response['answer']
+        assert response['escalate'] == True
+
+    def test_out_of_scope_additional(self):
+        response = handle('What are the mess canteen options?')
+        assert response['escalate'] == True
