@@ -156,14 +156,16 @@ def extract_company(question: str, data: list) -> list:
 
 def get_intents(question: str) -> dict:
     q = question.lower()
+    def has_any(words):
+        return any(re.search(r'\b' + re.escape(w) + r'\b', q) for w in words)
     return {
-        "highest_ctc": any(w in q for w in ["highest", "maximum", "max ctc", "max package", "highest ctc", "highest package", "highest salary"]),
-        "lowest_ctc": any(w in q for w in ["lowest", "minimum", "min ctc", "min package", "lowest ctc", "lowest package", "lowest salary"]),
-        "average_ctc": any(w in q for w in ["average", "mean", "avg ctc", "avg package", "average ctc", "average package", "average salary"]),
-        "company_wise": any(w in q for w in ["company-wise", "each company", "by company", "company wise"]),
-        "batch_wise": any(w in q for w in ["batch-wise", "batch comparison", "compare batch", "batch wise"]),
-        "role_wise": any(w in q for w in ["role-wise", "by role", "role wise"]),
-        "location_wise": any(w in q for w in ["location-wise", "by location", "location wise"]),
+        "highest_ctc": has_any(["highest", "maximum", "max ctc", "max package", "highest ctc", "highest package", "highest salary"]),
+        "lowest_ctc": has_any(["lowest", "minimum", "min ctc", "min package", "lowest ctc", "lowest package", "lowest salary"]),
+        "average_ctc": has_any(["average", "mean", "avg ctc", "avg package", "average ctc", "average package", "average salary"]),
+        "company_wise": has_any(["company-wise", "each company", "by company", "company wise"]),
+        "batch_wise": has_any(["batch-wise", "batch comparison", "compare batch", "batch wise"]),
+        "role_wise": has_any(["role-wise", "by role", "role wise"]),
+        "location_wise": has_any(["location-wise", "by location", "location wise"]),
     }
 
 def safe_float(val) -> float:
@@ -269,8 +271,8 @@ def handle(question: str) -> dict:
     intents = get_intents(question_lower)
     
     is_general_all = False
-    general_keywords = ["companies visited", "companies hiring", "students placed", "placement opportunities", "placement statistics", "placement report", "package details", "salary offered"]
-    if any(w in question_lower for w in general_keywords) and not year and not batch and not roles and not companies and not locations and not ctc_threshold and not any(intents.values()):
+    general_keywords = ["companies visited", "students placed", "placement opportunities", "placement statistics", "placement report", "package details", "salary offered", "hiring"]
+    if any(re.search(r'\b' + re.escape(w) + r'\b', question_lower) for w in general_keywords) and not year and not batch and not roles and not companies and not locations and not ctc_threshold and not any(intents.values()):
         is_general_all = True
         
     filtered_records = data

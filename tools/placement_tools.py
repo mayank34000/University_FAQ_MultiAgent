@@ -96,26 +96,6 @@ def get_company_records(company: str) -> List[Dict[str, Any]]:
             results.append(r)
     return results
 
-def search_placement_records(query: str) -> List[Dict[str, Any]]:
-    norm_query = normalize_text(query)
-    data = load_placement_data()
-    results = []
-    for r in data:
-        # Search across all string values
-        match = False
-        for k, v in r.items():
-            if isinstance(v, str) and norm_query in normalize_text(v):
-                match = True
-                break
-        if match:
-            results.append(r)
-    return results
-
-def format_ctc(record: Dict[str, Any]) -> str:
-    return record.get("ctc", "Not specified")
-
-def format_stipend(record: Dict[str, Any]) -> str:
-    return record.get("stipend", "Not specified")
 
 def filter_by_role(role: str) -> List[Dict[str, Any]]:
     norm_role = normalize_text(role)
