@@ -254,7 +254,18 @@ def handle(question: str) -> dict:
             "escalate": True
         }
 
-    data = load_placement_data()
+    try:
+        data = load_placement_data()
+        if not data:
+            raise ValueError("Empty data returned")
+    except Exception:
+        return {
+            "answer": "Placement data is currently unavailable due to a technical error.",
+            "sources": [],
+            "agent": "placements",
+            "confidence": 0.5,
+            "escalate": True
+        }
     
     roles = extract_roles(question_lower)
     year = extract_year(question_lower)
@@ -265,7 +276,8 @@ def handle(question: str) -> dict:
     intents = get_intents(question_lower)
     
     is_general_all = False
-    if "companies visited" in question_lower and not year and not batch and not roles and not companies and not locations and not ctc_threshold and not any(intents.values()):
+    general_keywords = ["companies visited", "companies hiring", "students placed", "placement opportunities", "placement statistics", "placement report", "package details", "salary offered"]
+    if any(w in question_lower for w in general_keywords) and not year and not batch and not roles and not companies and not locations and not ctc_threshold and not any(intents.values()):
         is_general_all = True
         
     filtered_records = data

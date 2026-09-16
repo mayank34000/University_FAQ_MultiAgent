@@ -248,3 +248,45 @@ class TestPhase2Features:
     def test_out_of_scope_additional(self):
         response = handle('What are the mess canteen options?')
         assert response['escalate'] == True
+
+class TestPhase3Integration:
+    def test_contract_validation(self):
+        response = handle('What companies visited for placements?')
+        assert isinstance(response, dict)
+        keys = ['answer', 'sources', 'agent', 'confidence', 'escalate']
+        for k in keys:
+            assert k in response
+        assert isinstance(response['answer'], str)
+        assert isinstance(response['sources'], list)
+        assert isinstance(response['agent'], str)
+        assert isinstance(response['confidence'], float)
+        assert isinstance(response['escalate'], bool)
+        assert 0.0 <= response['confidence'] <= 1.0
+
+    def test_empty_or_invalid_question(self):
+        response = handle('')
+        assert response['escalate'] is True
+        assert response['confidence'] == 0.1
+        
+        response2 = handle('a')
+        assert response2['escalate'] is True
+        assert response2['confidence'] == 0.1
+
+    def test_new_general_keywords(self):
+        response = handle('What are the placement statistics?')
+        assert 'Found' in response['answer']
+        assert response['escalate'] is False
+        
+        response2 = handle('Show me the package details.')
+        assert 'Found' in response['answer']
+        assert response2['escalate'] is False
+
+    def test_missing_data_exception(self, monkeypatch):
+        import agents.placements
+        def mock_load_data():
+            raise Exception('Mock error')
+        monkeypatch.setattr(agents.placements, 'load_placement_data', mock_load_data)
+        
+        response = handle('Which companies visited?')
+        assert response['escalate'] is True
+        assert 'technical error' in response['answer']
