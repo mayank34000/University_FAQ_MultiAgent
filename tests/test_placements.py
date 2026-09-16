@@ -290,3 +290,30 @@ class TestPhase3Integration:
         response = handle('Which companies visited?')
         assert response['escalate'] is True
         assert 'technical error' in response['answer']
+
+class TestPhase4FinalValidation:
+    def test_realistic_e2e_queries(self):
+        # 1. CTC specific query
+        r1 = handle('Which companies offered more than 10 LPA?')
+        assert 'Found' in r1['answer']
+        assert r1['escalate'] is False
+        assert len(r1['sources']) > 0
+
+        # 2. Location synonym query
+        r2 = handle('What placement opportunities are available in Bangalore?')
+        assert 'bangalore' in r2['answer'].lower() or 'bengaluru' in r2['answer'].lower()
+        
+        # 3. PPO word boundary check
+        r3 = handle('What placement opportunities are available?')
+        assert 'PPO' not in r3['answer']
+
+    def test_source_and_escalate_integrity(self):
+        # Unsupported
+        r1 = handle('Tell me about hostel mess fees.')
+        assert r1['escalate'] is True
+        assert r1['confidence'] == 0.1
+        
+        # Valid source extraction
+        r2 = handle('Show placement information for Batch 2027.')
+        # Sources should be IDs from the markdown like b27-001
+        assert any('b27' in s for s in r2['sources'])

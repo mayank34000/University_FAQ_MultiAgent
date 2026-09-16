@@ -2,14 +2,7 @@ import re
 from collections import defaultdict
 
 try:
-    from tools.placement_tools import (
-        filter_by_role,
-        trust_score,
-        get_company_records,
-        search_placement_records,
-        load_placement_data,
-        normalize_text
-    )
+    from tools.placement_tools import load_placement_data
     TOOLS_AVAILABLE = True
 except Exception:
     TOOLS_AVAILABLE = False
@@ -213,7 +206,7 @@ def handle(question: str) -> dict:
             "escalate": True
         }
         
-    if "ppo" in question_lower:
+    if re.search(r'\bppo\b', question_lower):
         return {
             "answer": "Pre-Placement Offer (PPO) information is not tracked in the current dataset. Please check with the placement cell for PPO statistics.",
             "sources": [],
