@@ -1,0 +1,805 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+
+    <meta charset="UTF-8">
+
+    <meta
+        name="viewport"
+        content="width=device-width, initial-scale=1.0"
+    >
+
+    <title>University FAQ</title>
+
+    <meta
+        name="description"
+        content="AI-powered University FAQ Assistant"
+    >
+
+    <link
+        rel="preconnect"
+        href="https://fonts.googleapis.com"
+    >
+
+    <link
+        rel="preconnect"
+        href="https://fonts.gstatic.com"
+        crossorigin
+    >
+
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap"
+        rel="stylesheet"
+    >
+
+    <link
+        rel="stylesheet"
+        href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css"
+    >
+
+    <link
+        rel="stylesheet"
+        href="{{ url_for('static', filename='css/style.css') }}"
+    >
+
+</head>
+
+
+<body>
+
+<div class="app">
+
+
+    <!-- ================================================
+         NAVBAR
+         ================================================ -->
+
+    <header class="navbar">
+
+        <div class="nav-inner">
+
+            <a
+                href="#home"
+                class="logo"
+            >
+
+                <div class="logo-icon">
+                    <i class="bi bi-mortarboard-fill"></i>
+                </div>
+
+                <div class="logo-text">
+
+                    <strong>University FAQ</strong>
+
+                    <span>AI Assistant</span>
+
+                </div>
+
+            </a>
+
+
+            <nav class="nav-links">
+
+                <a
+                    href="#home"
+                    class="nav-link active"
+                >
+                    Home
+                </a>
+
+                <a
+                    href="#chat"
+                    class="nav-link"
+                >
+                    About
+                </a>
+
+                <a
+                    href="#contact"
+                    class="nav-link"
+                >
+                    Contact
+                </a>
+
+            </nav>
+
+
+            <div class="nav-actions">
+
+                <button
+                    id="themeBtn"
+                    class="theme-btn"
+                    type="button"
+                    title="Toggle dark mode"
+                >
+                    <i class="bi bi-moon"></i>
+                </button>
+
+
+                <!-- SIGN IN ONLY
+
+                <button
+                    id="signInBtn"
+                    class="signin-btn"
+                    type="button"
+                >
+                    Sign In
+                </button> -->
+
+            </div>
+
+        </div>
+
+    </header>
+
+
+
+    <!-- ================================================
+         HOME / LANDING
+         ================================================ -->
+
+    <main>
+
+        <section
+            id="home"
+            class="hero"
+        >
+
+            <div class="hero-card">
+
+
+                <div class="hero-content">
+
+                    <div class="hero-badge">
+
+                        <i class="bi bi-stars"></i>
+
+                        AI-Powered University Assistant
+
+                    </div>
+
+
+                    <h1>
+
+                        Find Answers.
+                        <br>
+
+                        <span>Anytime, Instantly.</span>
+
+                    </h1>
+
+
+                    <p>
+
+                        Your AI-powered assistant for
+                        university-related questions —
+                        admissions, academics, hostel,
+                        exams, fees and placements.
+
+                    </p>
+
+
+                    <button
+                        id="heroAskBtn"
+                        class="primary-btn"
+                        type="button"
+                    >
+
+                        Ask a Question
+
+                        <i class="bi bi-arrow-right"></i>
+
+                    </button>
+
+                </div>
+
+
+                <div class="hero-visual">
+
+                    <div class="building">
+
+                        <div class="building-roof"></div>
+
+                        <div class="building-body">
+
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                            <span></span>
+
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                            <span></span>
+
+                            <span></span>
+                            <span></span>
+                            <span></span>
+                            <span></span>
+
+                        </div>
+
+                    </div>
+
+
+                    <div class="tree tree-one"></div>
+
+                    <div class="tree tree-two"></div>
+
+                    <div class="tree tree-three"></div>
+
+                </div>
+
+            </div>
+
+
+            <!-- =========================================
+                 CATEGORY CARDS
+                 ========================================= -->
+
+            <div class="category-grid">
+
+
+                <button
+                    class="category-card"
+                    data-question="What is the admission process for B.Tech?"
+                    type="button"
+                >
+
+                    <div class="category-icon">
+                        <i class="bi bi-person-check"></i>
+                    </div>
+
+                    <strong>Admissions</strong>
+
+                    <small>Admission information</small>
+
+                </button>
+
+
+                <button
+                    class="category-card"
+                    data-question="What academic programs and courses are available?"
+                    type="button"
+                >
+
+                    <div class="category-icon">
+                        <i class="bi bi-mortarboard"></i>
+                    </div>
+
+                    <strong>Academics</strong>
+
+                    <small>Courses & programs</small>
+
+                </button>
+
+
+                <button
+                    class="category-card"
+                    data-question="What are the examination rules and dates?"
+                    type="button"
+                >
+
+                    <div class="category-icon">
+                        <i class="bi bi-calendar-check"></i>
+                    </div>
+
+                    <strong>Exams</strong>
+
+                    <small>Exam information</small>
+
+                </button>
+
+
+                <button
+                    class="category-card"
+                    data-question="What is the tuition fee for B.Tech CSE?"
+                    type="button"
+                >
+
+                    <div class="category-icon">
+                        <i class="bi bi-currency-rupee"></i>
+                    </div>
+
+                    <strong>Fees & Finance</strong>
+
+                    <small>Fees & scholarships</small>
+
+                </button>
+
+
+                <button
+                    class="category-card"
+                    data-question="What hostel facilities are available?"
+                    type="button"
+                >
+
+                    <div class="category-icon">
+                        <i class="bi bi-house"></i>
+                    </div>
+
+                    <strong>Hostel & Campus</strong>
+
+                    <small>Campus facilities</small>
+
+                </button>
+
+
+                <button
+                    class="category-card"
+                    data-question="What placement opportunities are available?"
+                    type="button"
+                >
+
+                    <div class="category-icon">
+                        <i class="bi bi-briefcase"></i>
+                    </div>
+
+                    <strong>Placements</strong>
+
+                    <small>Jobs & internships</small>
+
+                </button>
+
+            </div>
+
+
+            <div class="hero-action">
+
+                <button
+                    id="askQuestionBtn"
+                    class="primary-btn large"
+                    type="button"
+                >
+
+                    Ask a Question
+
+                    <i class="bi bi-arrow-right"></i>
+
+                </button>
+
+            </div>
+
+
+            <div class="trust-grid">
+
+                <div class="trust-card">
+
+                    <div class="trust-icon">
+                        <i class="bi bi-clock"></i>
+                    </div>
+
+                    <div>
+
+                        <strong>24/7</strong>
+
+                        <span>Available</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="trust-card">
+
+                    <div class="trust-icon">
+                        <i class="bi bi-lightning-charge"></i>
+                    </div>
+
+                    <div>
+
+                        <strong>Quick</strong>
+
+                        <span>& Accurate</span>
+
+                    </div>
+
+                </div>
+
+
+                <div class="trust-card">
+
+                    <div class="trust-icon">
+                        <i class="bi bi-shield-check"></i>
+                    </div>
+
+                    <div>
+
+                        <strong>Trusted</strong>
+
+                        <span>University Information</span>
+
+                    </div>
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- ================================================
+             CHAT
+             ================================================ -->
+
+        <section
+            id="chat"
+            class="chat-section"
+        >
+
+            <div class="chat-container">
+
+
+                <div class="chat-header">
+
+                    <div>
+
+                        <span class="section-label">
+                            AI ASSISTANT
+                        </span>
+
+                        <h2>
+                            How can I help you today?
+                        </h2>
+
+                        <p>
+                            Ask anything about the university.
+                        </p>
+
+                    </div>
+
+
+                    <button
+                        id="clearChatBtn"
+                        class="clear-btn"
+                        type="button"
+                    >
+
+                        <i class="bi bi-trash3"></i>
+
+                        Clear Chat
+
+                    </button>
+
+                </div>
+
+
+
+                <!-- CHAT MESSAGES -->
+
+                <div
+                    id="messages"
+                    class="chat-window"
+                >
+
+                    <div
+                        id="emptyState"
+                        class="empty-state"
+                    >
+
+                        <div class="empty-icon">
+
+                            <i class="bi bi-stars"></i>
+
+                        </div>
+
+
+                        <h3>
+                            How can I help you today?
+                        </h3>
+
+
+                        <p>
+                            Here are some popular questions
+                            you can ask:
+                        </p>
+
+
+                        <div class="question-grid">
+
+
+                            <button
+                                class="example-question"
+                                data-question="What is the admission process?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-person-check"></i>
+
+                                <span>
+                                    What is the admission process?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+
+                            <button
+                                class="example-question"
+                                data-question="What is the fee structure?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-file-text"></i>
+
+                                <span>
+                                    What is the fee structure?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+
+                            <button
+                                class="example-question"
+                                data-question="What are the hostel facilities?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-house"></i>
+
+                                <span>
+                                    What are the hostel facilities?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+
+                            <button
+                                class="example-question"
+                                data-question="What documents are required for admission?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-file-earmark"></i>
+
+                                <span>
+                                    What documents are required?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+
+                            <button
+                                class="example-question"
+                                data-question="When are the examination dates?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-calendar"></i>
+
+                                <span>
+                                    When are the exam dates?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+
+                            <button
+                                class="example-question"
+                                data-question="What placement opportunities are available?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-briefcase"></i>
+
+                                <span>
+                                    What are the placement opportunities?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+
+                            <button
+                                class="example-question"
+                                data-question="How can I apply for a scholarship?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-award"></i>
+
+                                <span>
+                                    How can I apply for a scholarship?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+
+                            <button
+                                class="example-question"
+                                data-question="What are the library timings?"
+                                type="button"
+                            >
+
+                                <i class="bi bi-book"></i>
+
+                                <span>
+                                    What are the library timings?
+                                </span>
+
+                                <i class="bi bi-chevron-right"></i>
+
+                            </button>
+
+                        </div>
+
+
+                        <div class="custom-question">
+
+                            Or type your own question below
+
+                            <i class="bi bi-chevron-down"></i>
+
+                        </div>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- TYPING -->
+
+                <div
+                    id="typingIndicator"
+                    class="typing d-none"
+                >
+
+                    <div class="bot-avatar">
+
+                        <i class="bi bi-robot"></i>
+
+                    </div>
+
+                    <div class="typing-bubble">
+
+                        <span></span>
+                        <span></span>
+                        <span></span>
+
+                    </div>
+
+                </div>
+
+
+
+                <!-- INPUT -->
+
+                <form
+                    id="chatForm"
+                    class="chat-input"
+                >
+
+                    <div class="input-icon">
+
+                        <i class="bi bi-paperclip"></i>
+
+                    </div>
+
+
+                    <textarea
+                        id="questionInput"
+                        rows="1"
+                        maxlength="1000"
+                        placeholder="Type your question here..."
+                    ></textarea>
+
+
+                    <button
+                        id="sendBtn"
+                        class="send-button"
+                        type="submit"
+                    >
+
+                        <i class="bi bi-send-fill"></i>
+
+                    </button>
+
+                </form>
+
+
+                <div class="input-note">
+
+                    Press Enter to send
+
+                    <span>•</span>
+
+                    University FAQ Assistant
+
+                </div>
+
+            </div>
+
+        </section>
+
+
+
+        <!-- ================================================
+             CONTACT
+             ================================================ -->
+
+        <section
+            id="contact"
+            class="contact-section"
+        >
+
+            <div class="contact-box">
+
+                <span class="section-label">
+                    UNIVERSITY FAQ
+                </span>
+
+                <h2>
+                    Need more information?
+                </h2>
+
+                <p>
+                    Ask the AI assistant about admissions,
+                    academics, fees, campus, hostel or placements.
+                </p>
+
+                <button
+                    id="contactAskBtn"
+                    class="primary-btn"
+                    type="button"
+                >
+
+                    Ask a Question
+
+                    <i class="bi bi-arrow-right"></i>
+
+                </button>
+
+            </div>
+
+        </section>
+
+    </main>
+
+
+
+    <!-- ================================================
+         FOOTER
+         ================================================ -->
+
+    <footer class="footer">
+
+        <div class="footer-brand">
+
+            <i class="bi bi-mortarboard-fill"></i>
+
+            University FAQ
+
+        </div>
+
+        <span>
+            AI-powered university information assistant
+        </span>
+
+    </footer>
+
+
+</div>
+
+
+<script
+    src="{{ url_for('static', filename='js/app.js') }}"
+></script>
+
+</body>
+
+</html>
