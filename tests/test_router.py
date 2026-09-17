@@ -1,3 +1,4 @@
+
 from unittest.mock import patch
 
 from agents.router import (
@@ -11,28 +12,9 @@ from agents.router import (
 # -------------------------
 
 def test_fees_question():
-    with patch(
-        "agents.router.chat",
-        return_value="fees_academics"
-    ) as mock_chat:
-
-        assert route(
-            "What is the tuition fee for B.Tech CSE?"
-        ) == "fees_academics"
-
-        mock_chat.assert_called_once()
-
-        args, kwargs = mock_chat.call_args
-
-        assert args[0][0]["role"] == "system"
-        assert args[0][1]["role"] == "user"
-
-        assert (
-            args[0][1]["content"]
-            == "What is the tuition fee for B.Tech CSE?"
-        )
-
-        assert kwargs["temperature"] == 0
+    assert route(
+        "What is the tuition fee for B.Tech CSE?"
+    ) == "fees_academics"
 
 
 def test_academics_question():
@@ -299,3 +281,4 @@ def test_follow_up_empty_llm_response():
         )
 
         assert result == []
+

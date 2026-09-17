@@ -1,11 +1,32 @@
+"""
+Azure OpenAI client used by the University FAQ multi-agent system.
+
+This module provides:
+    - chat()  -> Azure OpenAI chat completion
+    - embed() -> Azure OpenAI embeddings
+
+Configuration is loaded from .env:
+
+    AZURE_OPENAI_ENDPOINT
+    AZURE_OPENAI_API_KEY
+    AZURE_OPENAI_API_VERSION
+    AZURE_OPENAI_CHAT_DEPLOYMENT
+    AZURE_OPENAI_EMBEDDING_DEPLOYMENT
+"""
+
 import os
 
 from dotenv import load_dotenv
 from openai import AzureOpenAI
 
 
+# Load environment variables from .env
 load_dotenv()
 
+
+# -------------------------------------------------------------------
+# Azure OpenAI Configuration
+# -------------------------------------------------------------------
 
 AZURE_OPENAI_ENDPOINT = os.getenv(
     "AZURE_OPENAI_ENDPOINT"
@@ -20,6 +41,7 @@ AZURE_OPENAI_API_VERSION = os.getenv(
     "2024-10-21",
 )
 
+# Azure deployment name, NOT necessarily the base model name.
 CHAT_DEPLOYMENT = os.getenv(
     "AZURE_OPENAI_CHAT_DEPLOYMENT",
     "gpt-4o-mini",
@@ -31,12 +53,22 @@ EMBEDDING_DEPLOYMENT = os.getenv(
 )
 
 
+# Reuse one client during the application lifetime.
 _client = None
 
 
 def _get_client():
     """
-    Create the Azure OpenAI client only when required.
+    Create and return the Azure OpenAI client.
+
+    The client is created lazily so importing this module does not
+    require Azure credentials to be available immediately.
+
+    Returns:
+        AzureOpenAI: Configured Azure OpenAI client.
+
+    Raises:
+        RuntimeError: If required Azure configuration is missing.
     """
 
     global _client
@@ -63,19 +95,26 @@ def _get_client():
     return _client
 
 
-def chat(
-    messages,
-    temperature=0.2,
-):
+def chat(messages, temperature=0.2):
     """
-    Send chat messages to Azure OpenAI.
+    Send a chat-completion request to Azure OpenAI.
 
     Args:
-        messages: OpenAI-compatible chat messages.
-        temperature: Sampling temperature.
+        messages (list[dict]):
+            OpenAI-compatible messages.
+
+        temperature (float):
+            Sampling temperature.
 
     Returns:
-        Assistant response as a string.
+        str:
+            Assistant response.
+
+    Raises:
+        ValueError:
+            If messages are empty.
+        RuntimeError:
+            If Azure configuration is missing.
     """
 
     if not messages:
@@ -91,6 +130,10 @@ def chat(
         temperature=temperature,
     )
 
+    # Protect against unexpected empty responses.
+    if not response.choices:
+        return ""
+
     content = response.choices[0].message.content
 
     if not content:
@@ -104,10 +147,18 @@ def embed(text):
     Generate an embedding using Azure OpenAI.
 
     Args:
-        text: Text to embed.
+        text (str):
+            Text to embed.
 
     Returns:
-        List of embedding values.
+        list[float]:
+            Embedding vector.
+
+    Raises:
+        ValueError:
+            If text is empty or whitespace.
+        RuntimeError:
+            If Azure configuration is missing.
     """
 
     if not text or not text.strip():
@@ -121,5 +172,8 @@ def embed(text):
         model=EMBEDDING_DEPLOYMENT,
         input=text.strip(),
     )
+
+    if not response.data:
+        return []
 
     return response.data[0].embedding
