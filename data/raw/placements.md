@@ -7,7 +7,9 @@
 > **Important data rules**
 > - `Not specified` means the source did not provide the value.
 > - A value of `0` is retained only when the source explicitly reports zero.
-> - Placement counts are not available for the Batch 2027 sheet.
+> - Placement counts are not avail
+### Summary
+Found **198** matching records across **124** companies.able for the Batch 2027 sheet.
 > - CTC values are shown in LPA unless stated otherwise.
 > - Stipend values are shown in INR thousands per month.
 > - Remarks from the source are not treated as verified facts and are intentionally excluded from the factual records.

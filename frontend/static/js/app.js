@@ -1,967 +1,586 @@
 /* =========================================================
    UNIVERSITY FAQ ASSISTANT
+   Frontend only
+   Uses the existing Flask POST /api/ask endpoint.
    ========================================================= */
 
+const chatMessages = document.getElementById("chatMessages");
+const questionInput = document.getElementById("questionInput");
+const sendButton = document.getElementById("sendButton");
+const themeToggle = document.getElementById("themeToggle");
+const themeIcon = document.getElementById("themeIcon");
+const characterCount = document.getElementById("characterCount");
+const quickQuestions = document.getElementById("quickQuestions");
 
-/* =========================================================
-   ELEMENTS
-   ========================================================= */
+let isLoading = false;
 
-const form =
-    document.getElementById("chatForm");
+/* -------------------------
+   Theme
+   ------------------------- */
 
-const input =
-    document.getElementById("questionInput");
+function applyTheme(theme) {
+    const dark = theme === "dark";
 
-const sendBtn =
-    document.getElementById("sendBtn");
-
-const messages =
-    document.getElementById("messages");
-
-const emptyState =
-    document.getElementById("emptyState");
-
-const typingIndicator =
-    document.getElementById("typingIndicator");
-
-const clearChatBtn =
-    document.getElementById("clearChatBtn");
-
-const themeBtn =
-    document.getElementById("themeBtn");
-
-const heroAskBtn =
-    document.getElementById("heroAskBtn");
-
-const askQuestionBtn =
-    document.getElementById("askQuestionBtn");
-
-const contactAskBtn =
-    document.getElementById("contactAskBtn");
-
-
-/* =========================================================
-   AGENT NAME
-   ========================================================= */
-
-function formatAgent(agent) {
-
-    const names = {
-
-        fees_academics:
-            "Fees & Academics Agent",
-
-        placements:
-            "Placements Agent",
-
-        campus_hostel:
-            "Campus & Hostel Agent",
-
-        unknown:
-            "University FAQ Router"
-
-    };
-
-    return names[agent] ||
-        agent ||
-        "University FAQ Assistant";
-
+    document.body.classList.toggle("dark", dark);
+    themeIcon.textContent = dark ? "☀" : "☾";
 }
 
-
-/* =========================================================
-   SCROLL TO CHAT
-   ========================================================= */
-
-function openChat() {
-
-    document
-        .getElementById("chat")
-        .scrollIntoView({
-            behavior: "smooth"
-        });
-
-    setTimeout(() => {
-
-        input.focus();
-
-    }, 500);
-
+function loadTheme() {
+    applyTheme(localStorage.getItem("university-faq-theme") || "light");
 }
 
+themeToggle.addEventListener("click", () => {
+    const nextTheme = document.body.classList.contains("dark")
+        ? "light"
+        : "dark";
 
-/* =========================================================
-   ASK QUESTION FROM CATEGORY
-   ========================================================= */
+    localStorage.setItem("university-faq-theme", nextTheme);
+    applyTheme(nextTheme);
+});
 
-function askPresetQuestion(question) {
+/* -------------------------
+   Quick questions
+   ------------------------- */
 
-    document
-        .getElementById("chat")
-        .scrollIntoView({
-            behavior: "smooth"
-        });
+document.querySelectorAll(".question-card").forEach((button) => {
+    button.addEventListener("click", () => {
+        const question = button.dataset.question;
+        if (question) askQuestion(question);
+    });
+});
 
-    setTimeout(() => {
+/* -------------------------
+   Input
+   ------------------------- */
 
-        input.value =
-            question;
-
-        resizeInput();
-
-        sendQuestion();
-
-    }, 500);
-
+function updateCounter() {
+    characterCount.textContent = `${questionInput.value.length}/500`;
 }
-
-
-/* =========================================================
-   REMOVE EMPTY STATE
-   ========================================================= */
-
-function removeEmptyState() {
-
-    const state =
-        document.getElementById("emptyState");
-
-    if (state) {
-
-        state.remove();
-
-    }
-
-}
-
-
-/* =========================================================
-   ADD USER MESSAGE
-   ========================================================= */
-
-function addUserMessage(question) {
-
-    const row =
-        document.createElement("div");
-
-    row.className =
-        "message-row user";
-
-
-    const avatar =
-        document.createElement("div");
-
-    avatar.className =
-        "user-avatar";
-
-    avatar.innerHTML =
-        '<i class="bi bi-person-fill"></i>';
-
-
-    const content =
-        document.createElement("div");
-
-    content.className =
-        "message-content";
-
-
-    const bubble =
-        document.createElement("div");
-
-    bubble.className =
-        "message-bubble";
-
-    bubble.textContent =
-        question;
-
-
-    content.appendChild(
-        bubble
-    );
-
-    row.appendChild(
-        avatar
-    );
-
-    row.appendChild(
-        content
-    );
-
-    messages.appendChild(
-        row
-    );
-
-
-    scrollToBottom();
-
-}
-
-
-/* =========================================================
-   ADD ASSISTANT MESSAGE
-   ========================================================= */
-
-function addAssistantMessage(
-    answer,
-    agent,
-    followUps,
-    sources
-) {
-
-    const row =
-        document.createElement("div");
-
-    row.className =
-        "message-row assistant";
-
-
-    /* ---------------------------------------------
-       BOT AVATAR
-       --------------------------------------------- */
-
-    const avatar =
-        document.createElement("div");
-
-    avatar.className =
-        "bot-avatar";
-
-    avatar.innerHTML =
-        '<i class="bi bi-robot"></i>';
-
-
-    /* ---------------------------------------------
-       CONTENT
-       --------------------------------------------- */
-
-    const content =
-        document.createElement("div");
-
-    content.className =
-        "message-content";
-
-
-    /* ---------------------------------------------
-       ANSWER
-       --------------------------------------------- */
-
-    const bubble =
-        document.createElement("div");
-
-    bubble.className =
-        "message-bubble";
-
-    bubble.textContent =
-        answer ||
-        "I could not find an answer.";
-
-
-    content.appendChild(
-        bubble
-    );
-
-
-    /* ---------------------------------------------
-       AGENT
-       --------------------------------------------- */
-
-    if (agent) {
-
-        const agentLabel =
-            document.createElement("div");
-
-        agentLabel.className =
-            "agent-label";
-
-        const icon =
-            document.createElement("i");
-
-        icon.className =
-            "bi bi-diagram-3";
-
-
-        agentLabel.appendChild(
-            icon
-        );
-
-        agentLabel.appendChild(
-            document.createTextNode(
-                " " +
-                formatAgent(agent)
-            )
-        );
-
-
-        content.appendChild(
-            agentLabel
-        );
-
-    }
-
-
-    /* ---------------------------------------------
-       FOLLOW-UP QUESTIONS
-       --------------------------------------------- */
-
-    if (
-        Array.isArray(followUps) &&
-        followUps.length > 0
-    ) {
-
-        const followupBox =
-            document.createElement("div");
-
-        followupBox.className =
-            "followups";
-
-
-        const title =
-            document.createElement("div");
-
-        title.className =
-            "followups-title";
-
-        title.textContent =
-            "You may also want to ask:";
-
-
-        followupBox.appendChild(
-            title
-        );
-
-
-        followUps
-            .slice(0, 5)
-            .forEach(question => {
-
-                if (!question) {
-                    return;
-                }
-
-
-                const button =
-                    document.createElement("button");
-
-                button.type =
-                    "button";
-
-                button.className =
-                    "followup-btn";
-
-                button.textContent =
-                    question;
-
-
-                button.addEventListener(
-                    "click",
-                    () => {
-
-                        input.value =
-                            question;
-
-                        resizeInput();
-
-                        sendQuestion();
-
-                    }
-                );
-
-
-                followupBox.appendChild(
-                    button
-                );
-
-            });
-
-
-        content.appendChild(
-            followupBox
-        );
-
-    }
-
-
-    /* ---------------------------------------------
-       SOURCES
-       --------------------------------------------- */
-
-    if (
-        Array.isArray(sources) &&
-        sources.length > 0
-    ) {
-
-        const sourceBox =
-            document.createElement("div");
-
-        sourceBox.className =
-            "sources";
-
-
-        const title =
-            document.createElement("div");
-
-        title.className =
-            "sources-title";
-
-        title.textContent =
-            "Sources / References";
-
-
-        sourceBox.appendChild(
-            title
-        );
-
-
-        sources
-            .slice(0, 5)
-            .forEach(source => {
-
-                const item =
-                    document.createElement("span");
-
-                item.className =
-                    "source-item";
-
-
-                let sourceName =
-                    "Reference";
-
-
-                if (
-                    typeof source === "string"
-                ) {
-
-                    sourceName =
-                        source;
-
-                }
-
-                else if (
-                    source &&
-                    typeof source === "object"
-                ) {
-
-                    sourceName =
-                        source.title ||
-                        source.name ||
-                        source.id ||
-                        "Reference";
-
-                }
-
-
-                item.innerHTML =
-                    '<i class="bi bi-link-45deg"></i>';
-
-
-                item.appendChild(
-                    document.createTextNode(
-                        " " + sourceName
-                    )
-                );
-
-
-                sourceBox.appendChild(
-                    item
-                );
-
-            });
-
-
-        content.appendChild(
-            sourceBox
-        );
-
-    }
-
-
-    row.appendChild(
-        avatar
-    );
-
-    row.appendChild(
-        content
-    );
-
-
-    messages.appendChild(
-        row
-    );
-
-
-    scrollToBottom();
-
-}
-
-
-/* =========================================================
-   LOADING
-   ========================================================= */
-
-function setLoading(isLoading) {
-
-    if (isLoading) {
-
-        typingIndicator.classList.remove(
-            "d-none"
-        );
-
-    }
-
-    else {
-
-        typingIndicator.classList.add(
-            "d-none"
-        );
-
-    }
-
-
-    sendBtn.disabled =
-        isLoading;
-
-}
-
-
-/* =========================================================
-   RESIZE TEXTAREA
-   ========================================================= */
 
 function resizeInput() {
-
-    input.style.height =
-        "auto";
-
-    input.style.height =
-        Math.min(
-            input.scrollHeight,
-            120
-        ) + "px";
-
+    questionInput.style.height = "auto";
+    questionInput.style.height =
+        `${Math.min(questionInput.scrollHeight, 105)}px`;
 }
 
+questionInput.addEventListener("input", () => {
+    updateCounter();
+    resizeInput();
+});
 
-/* =========================================================
-   SCROLL CHAT
-   ========================================================= */
+questionInput.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" && !event.shiftKey) {
+        event.preventDefault();
+        askQuestion(questionInput.value);
+    }
+});
 
-function scrollToBottom() {
+sendButton.addEventListener("click", () => {
+    askQuestion(questionInput.value);
+});
 
-    messages.scrollTo({
+/* -------------------------
+   API
+   ------------------------- */
 
-        top:
-            messages.scrollHeight,
+async function askQuestion(rawQuestion) {
+    if (isLoading) return;
 
-        behavior:
-            "smooth"
+    const question = String(rawQuestion || "").trim();
 
-    });
-
-}
-
-
-/* =========================================================
-   SEND QUESTION
-   ========================================================= */
-
-async function sendQuestion() {
-
-    const question =
-        input.value.trim();
-
-
-    if (
-        !question ||
-        sendBtn.disabled
-    ) {
-
+    if (!question) {
+        questionInput.focus();
         return;
-
     }
 
+    if (question.length > 500) {
+        addSystemMessage("Please keep your question under 500 characters.");
+        return;
+    }
 
-    removeEmptyState();
+    isLoading = true;
+    sendButton.disabled = true;
 
+    if (quickQuestions) {
+        quickQuestions.style.display = "none";
+    }
 
-    /* Show user question */
+    addUserMessage(question);
 
-    addUserMessage(
-        question
-    );
+    questionInput.value = "";
+    questionInput.style.height = "auto";
+    updateCounter();
 
-
-    /* Clear input */
-
-    input.value =
-        "";
-
-    resizeInput();
-
-
-    /* Show loading */
-
-    setLoading(
-        true
-    );
-
+    const typing = addTypingIndicator();
+    scrollToBottom();
 
     try {
+        const response = await fetch("/api/ask", {
+            method: "POST",
+            headers: {
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                question: question
+            })
+        });
 
-        const response =
-            await fetch(
-                "/api/ask",
-                {
-                    method:
-                        "POST",
+        let data = {};
 
-                    headers:
-                        {
-                            "Content-Type":
-                                "application/json"
-                        },
-
-                    body:
-                        JSON.stringify({
-                            question:
-                                question
-                        })
-                }
-            );
-
-
-        const data =
-            await response.json();
-
-
-        if (!response.ok) {
-
-            throw new Error(
-                data.error ||
-                "Server error."
-            );
-
+        try {
+            data = await response.json();
+        } catch {
+            throw new Error("The server returned an invalid response.");
         }
 
+        removeElement(typing);
 
-        /* -----------------------------------------
-           Read backend response
-           ----------------------------------------- */
+        if (!response.ok) {
+            throw new Error(
+                data.error ||
+                data.details ||
+                "Unable to get an answer."
+            );
+        }
 
-        const answer =
+        const answer = normalizeText(
             data.answer ||
             data.response ||
             data.message ||
-            "No answer was returned.";
+            "I couldn't find an answer."
+        );
 
-
-        const agent =
-            data.agent ||
-            data.route ||
-            data.domain ||
-            "";
-
-
-        const followUps =
+        const followUps = normalizeFollowUps(
             data.follow_up_questions ||
             data.follow_ups ||
             data.followups ||
-            [];
+            []
+        );
 
-
-        const sources =
+        const sources = normalizeSources(
             data.sources ||
             data.references ||
-            [];
-
-
-        console.log(
-            "Backend response:",
-            data
+            []
         );
-
-        console.log(
-            "Follow-up questions:",
-            followUps
-        );
-
 
         addAssistantMessage(
             answer,
-            agent,
             followUps,
-            sources
+            sources,
+            data.agent || ""
         );
 
+    } catch (error) {
+        removeElement(typing);
+
+        console.error("API ERROR:", error);
+
+        addSystemMessage(
+            error.message ||
+            "Something went wrong. Please try again."
+        );
+    } finally {
+        isLoading = false;
+        sendButton.disabled = false;
+        questionInput.focus();
+        scrollToBottom();
     }
-
-
-    catch (error) {
-
-        console.error(
-            "Question error:",
-            error
-        );
-
-
-        addAssistantMessage(
-
-            "Sorry, I could not process your question.\n\n" +
-            error.message,
-
-            "unknown",
-
-            [],
-
-            []
-
-        );
-
-    }
-
-
-    finally {
-
-        setLoading(
-            false
-        );
-
-        input.focus();
-
-    }
-
 }
 
+/* -------------------------
+   Normalization
+   ------------------------- */
 
-/* =========================================================
-   FORM SUBMIT
-   ========================================================= */
+function normalizeText(value) {
+    if (value === null || value === undefined) return "";
 
-form.addEventListener(
-    "submit",
-    event => {
-
-        event.preventDefault();
-
-        sendQuestion();
-
+    if (typeof value === "string") {
+        return value.trim();
     }
-);
 
+    if (typeof value === "object") {
+        return String(
+            value.answer ??
+            value.content ??
+            value.text ??
+            value.response ??
+            value.message ??
+            ""
+        ).trim();
+    }
 
-/* =========================================================
-   ENTER TO SEND
-   ========================================================= */
+    return String(value).trim();
+}
 
-input.addEventListener(
-    "keydown",
-    event => {
+function normalizeFollowUps(value) {
+    if (!Array.isArray(value)) return [];
 
-        if (
-            event.key === "Enter" &&
-            !event.shiftKey
-        ) {
+    return value
+        .map((item) => {
+            if (typeof item === "string") {
+                return item.trim();
+            }
 
-            event.preventDefault();
+            if (item && typeof item === "object") {
+                return String(
+                    item.question ??
+                    item.text ??
+                    item.content ??
+                    item.value ??
+                    ""
+                ).trim();
+            }
 
-            sendQuestion();
+            return String(item || "").trim();
+        })
+        .filter(Boolean)
+        .slice(0, 3);
+}
 
+function normalizeSources(value) {
+    if (!Array.isArray(value)) return [];
+
+    return value
+        .map((item) => {
+            if (typeof item === "string") return item.trim();
+
+            if (item && typeof item === "object") {
+                return String(
+                    item.name ??
+                    item.title ??
+                    item.source ??
+                    ""
+                ).trim();
+            }
+
+            return String(item || "").trim();
+        })
+        .filter(Boolean);
+}
+
+/* -------------------------
+   User message
+   ------------------------- */
+
+function addUserMessage(question) {
+    const row = document.createElement("div");
+    row.className = "message-row user-row";
+
+    const column = document.createElement("div");
+    column.className = "message-column";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble user-bubble";
+
+    const paragraph = document.createElement("p");
+    paragraph.textContent = question;
+
+    bubble.appendChild(paragraph);
+
+    const label = document.createElement("div");
+    label.className = "message-label";
+    label.textContent = "You";
+
+    column.appendChild(bubble);
+    column.appendChild(label);
+    row.appendChild(column);
+
+    chatMessages.appendChild(row);
+}
+
+/* -------------------------
+   Assistant message
+   ------------------------- */
+
+function addAssistantMessage(answer, followUps, sources, agent) {
+    const row = document.createElement("div");
+    row.className = "message-row assistant-row";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = "🤖";
+
+    const column = document.createElement("div");
+    column.className = "message-column";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble assistant-bubble";
+
+    renderAnswer(bubble, answer);
+
+    const label = document.createElement("div");
+    label.className = "message-label";
+    label.textContent = formatAgent(agent);
+
+    column.appendChild(bubble);
+    column.appendChild(label);
+
+    if (followUps.length === 3) {
+        addFollowUps(column, followUps);
+    } else if (followUps.length > 0) {
+        addFollowUps(column, followUps);
+    }
+
+    if (sources.length > 0) {
+        addSources(column, sources);
+    }
+
+    row.appendChild(avatar);
+    row.appendChild(column);
+
+    chatMessages.appendChild(row);
+    scrollToBottom();
+}
+
+/* -------------------------
+   Answer rendering
+   Supports basic markdown:
+   headings, bullets, bold.
+   No raw HTML is injected.
+   ------------------------- */
+
+function renderAnswer(container, answer) {
+    const lines = String(answer || "").split(/\r?\n/);
+
+    let list = null;
+
+    const closeList = () => {
+        if (list) {
+            container.appendChild(list);
+            list = null;
+        }
+    };
+
+    lines.forEach((rawLine) => {
+        const line = rawLine.trim();
+
+        if (!line) {
+            closeList();
+            return;
         }
 
-    }
-);
+        if (/^#{1,6}\s+/.test(line)) {
+            closeList();
 
+            const heading = document.createElement("p");
+            heading.style.fontWeight = "700";
+            heading.textContent = line.replace(/^#{1,6}\s+/, "");
+            container.appendChild(heading);
+            return;
+        }
 
-/* =========================================================
-   INPUT RESIZE
-   ========================================================= */
-
-input.addEventListener(
-    "input",
-    resizeInput
-);
-
-
-/* =========================================================
-   EXAMPLE QUESTIONS
-   ========================================================= */
-
-document
-    .querySelectorAll(
-        ".example-question"
-    )
-    .forEach(button => {
-
-        button.addEventListener(
-            "click",
-            () => {
-
-                askPresetQuestion(
-                    button.dataset.question
-                );
-
+        if (/^[-*•]\s+/.test(line)) {
+            if (!list) {
+                list = document.createElement("ul");
+                list.style.margin = "5px 0 0 18px";
             }
-        );
 
+            const li = document.createElement("li");
+            li.style.marginBottom = "3px";
+            li.appendChild(formatInlineText(
+                line.replace(/^[-*•]\s+/, "")
+            ));
+
+            list.appendChild(li);
+            return;
+        }
+
+        closeList();
+
+        const paragraph = document.createElement("p");
+        paragraph.appendChild(formatInlineText(line));
+        container.appendChild(paragraph);
     });
 
-
-/* =========================================================
-   CATEGORY QUESTIONS
-   ========================================================= */
-
-document
-    .querySelectorAll(
-        ".category-card"
-    )
-    .forEach(button => {
-
-        button.addEventListener(
-            "click",
-            () => {
-
-                askPresetQuestion(
-                    button.dataset.question
-                );
-
-            }
-        );
-
-    });
-
-
-/* =========================================================
-   ASK BUTTONS
-   ========================================================= */
-
-if (heroAskBtn) {
-
-    heroAskBtn.addEventListener(
-        "click",
-        openChat
-    );
-
+    closeList();
 }
 
+function formatInlineText(text) {
+    const fragment = document.createDocumentFragment();
+    let remaining = text;
 
-if (askQuestionBtn) {
+    const regex = /\*\*(.*?)\*\*/g;
+    let match;
+    let lastIndex = 0;
 
-    askQuestionBtn.addEventListener(
-        "click",
-        openChat
-    );
-
-}
-
-
-if (contactAskBtn) {
-
-    contactAskBtn.addEventListener(
-        "click",
-        openChat
-    );
-
-}
-
-
-/* =========================================================
-   CLEAR CHAT
-   ========================================================= */
-
-clearChatBtn.addEventListener(
-    "click",
-    () => {
-
-        window.location.reload();
-
-    }
-);
-
-
-/* =========================================================
-   DARK MODE
-   ========================================================= */
-
-function updateThemeIcon() {
-
-    const icon =
-        themeBtn.querySelector("i");
-
-
-    if (
-        document.body.classList.contains(
-            "dark"
-        )
-    ) {
-
-        icon.className =
-            "bi bi-sun";
-
-    }
-
-    else {
-
-        icon.className =
-            "bi bi-moon";
-
-    }
-
-}
-
-
-themeBtn.addEventListener(
-    "click",
-    () => {
-
-        document.body.classList.toggle(
-            "dark"
-        );
-
-
-        const isDark =
-            document.body.classList.contains(
-                "dark"
+    while ((match = regex.exec(text)) !== null) {
+        if (match.index > lastIndex) {
+            fragment.appendChild(
+                document.createTextNode(
+                    text.slice(lastIndex, match.index)
+                )
             );
+        }
 
+        const strong = document.createElement("strong");
+        strong.textContent = match[1];
+        fragment.appendChild(strong);
 
-        localStorage.setItem(
-            "universityFAQTheme",
-            isDark
-                ? "dark"
-                : "light"
-        );
-
-
-        updateThemeIcon();
-
+        lastIndex = regex.lastIndex;
     }
-);
 
+    if (lastIndex < remaining.length) {
+        fragment.appendChild(
+            document.createTextNode(
+                remaining.slice(lastIndex)
+            )
+        );
+    }
 
-/* =========================================================
-   LOAD SAVED THEME
-   ========================================================= */
-
-const savedTheme =
-    localStorage.getItem(
-        "universityFAQTheme"
-    );
-
-
-if (
-    savedTheme === "dark"
-) {
-
-    document.body.classList.add(
-        "dark"
-    );
-
+    return fragment;
 }
 
+/* -------------------------
+   Follow-up questions
+   ------------------------- */
 
-updateThemeIcon();
+function addFollowUps(parent, questions) {
+    const section = document.createElement("div");
+    section.className = "followups";
 
+    const title = document.createElement("div");
+    title.className = "followup-title";
+    title.textContent = "You may also ask";
 
-/* =========================================================
-   INITIALIZE
-   ========================================================= */
+    const list = document.createElement("div");
+    list.className = "followup-list";
 
-resizeInput();
+    questions.slice(0, 3).forEach((question) => {
+        const button = document.createElement("button");
+        button.type = "button";
+        button.className = "followup-button";
+        button.textContent = question;
+
+        button.addEventListener("click", () => {
+            askQuestion(question);
+        });
+
+        list.appendChild(button);
+    });
+
+    section.appendChild(title);
+    section.appendChild(list);
+    parent.appendChild(section);
+}
+
+/* -------------------------
+   Sources
+   ------------------------- */
+
+function addSources(parent, sources) {
+    const wrapper = document.createElement("div");
+    wrapper.className = "sources";
+
+    sources.forEach((source) => {
+        const tag = document.createElement("span");
+        tag.className = "source-tag";
+        tag.textContent = source;
+        wrapper.appendChild(tag);
+    });
+
+    parent.appendChild(wrapper);
+}
+
+/* -------------------------
+   Typing indicator
+   ------------------------- */
+
+function addTypingIndicator() {
+    const row = document.createElement("div");
+    row.className = "message-row assistant-row";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = "🤖";
+
+    const column = document.createElement("div");
+    column.className = "message-column";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble assistant-bubble";
+
+    const typing = document.createElement("div");
+    typing.className = "typing";
+
+    for (let i = 0; i < 3; i++) {
+        const dot = document.createElement("span");
+        typing.appendChild(dot);
+    }
+
+    bubble.appendChild(typing);
+    column.appendChild(bubble);
+    row.appendChild(avatar);
+    row.appendChild(column);
+
+    chatMessages.appendChild(row);
+
+    return row;
+}
+
+/* -------------------------
+   Error/system message
+   ------------------------- */
+
+function addSystemMessage(text) {
+    const row = document.createElement("div");
+    row.className = "message-row assistant-row";
+
+    const avatar = document.createElement("div");
+    avatar.className = "avatar";
+    avatar.textContent = "⚠️";
+
+    const column = document.createElement("div");
+    column.className = "message-column";
+
+    const bubble = document.createElement("div");
+    bubble.className = "bubble assistant-bubble";
+
+    const paragraph = document.createElement("p");
+    paragraph.textContent = text;
+
+    bubble.appendChild(paragraph);
+    column.appendChild(bubble);
+    row.appendChild(avatar);
+    row.appendChild(column);
+
+    chatMessages.appendChild(row);
+    scrollToBottom();
+}
+
+/* -------------------------
+   Agent label
+   ------------------------- */
+
+function formatAgent(agent) {
+    const labels = {
+        fees_academics: "Fees & Academics",
+        placements: "Placements",
+        campus_hostel: "Campus & Hostel",
+        accounts_admin: "Accounts & Administration",
+        router: "University Assistant"
+    };
+
+    return labels[agent] || "University Assistant";
+}
+
+/* -------------------------
+   Helpers
+   ------------------------- */
+
+function removeElement(element) {
+    if (element && element.parentNode) {
+        element.parentNode.removeChild(element);
+    }
+}
+
+function scrollToBottom() {
+    requestAnimationFrame(() => {
+        chatMessages.scrollTo({
+            top: chatMessages.scrollHeight,
+            behavior: "smooth"
+        });
+    });
+}
+
+loadTheme();
+updateCounter();

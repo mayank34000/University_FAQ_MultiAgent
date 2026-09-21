@@ -1,4 +1,4 @@
-from agents.router import handle_question, generate_follow_up_questions
+from agents.router import handle_question
 
 
 def main():
@@ -18,28 +18,22 @@ def main():
         try:
             result = handle_question(question)
 
-            # Get the answer
+            print("\nAnswer:")
+
             if isinstance(result, dict):
                 answer = result.get("answer", "")
                 follow_ups = result.get("follow_up_questions", [])
+
+                print(answer)
+
+                if follow_ups:
+                    print("\nFollow-up questions:")
+
+                    for i, follow_up in enumerate(follow_ups[:3], 1):
+                        print(f"{i}. {follow_up}")
+
             else:
-                answer = result
-                follow_ups = []
-
-            print("\nAnswer:")
-            print(answer)
-
-            # Generate follow-up questions if they weren't returned
-            if not follow_ups:
-                follow_ups = generate_follow_up_questions(
-                    question,
-                    answer
-                )
-
-            if follow_ups:
-                print("\nFollow-up questions:")
-                for i, follow_up in enumerate(follow_ups, 1):
-                    print(f"{i}. {follow_up}")
+                print(result)
 
             print()
 
