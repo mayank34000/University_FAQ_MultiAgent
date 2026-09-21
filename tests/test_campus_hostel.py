@@ -107,6 +107,66 @@ def test_mixed_domain_question():
 
 
 # =====================================================================
+# REQUIRED 5 USER SPECIFIED TEST QUESTIONS
+# =====================================================================
+
+def test_required_q1_hostel_fees():
+    res = handle("What are the hostel fees?")
+    assert res["agent"] == "campus_hostel"
+    assert res["escalate"] is False
+    answer = res["answer"]
+    assert "REFERENCE CONTEXT" not in answer
+    assert "EXACT ANSWER" not in answer
+    assert "📌" not in answer
+    assert "65,000" in answer or "1,37,000" in answer or "fee" in answer.lower()
+
+
+def test_required_q2_single_seater_ac():
+    res = handle("What is the fee for a single-seater AC room?")
+    assert res["agent"] == "campus_hostel"
+    assert res["escalate"] is False
+    answer = res["answer"]
+    assert "REFERENCE CONTEXT" not in answer
+    assert "EXACT ANSWER" not in answer
+    assert "📌" not in answer
+    assert "1,37,000" in answer
+
+
+def test_required_q3_laundry_collection_days():
+    res = handle("What are the laundry collection days?")
+    assert res["agent"] == "campus_hostel"
+    assert res["escalate"] is False
+    answer = res["answer"]
+    assert "REFERENCE CONTEXT" not in answer
+    assert "EXACT ANSWER" not in answer
+    assert "📌" not in answer
+    assert "Tuesday" in answer and "Friday" in answer
+
+
+def test_required_q4_additional_laundry_charges():
+    res = handle("Are there any additional charges for laundry services beyond basic steam ironing?")
+    assert res["agent"] == "campus_hostel"
+    assert res["escalate"] is False
+    answer = res["answer"]
+    assert "REFERENCE CONTEXT" not in answer
+    assert "EXACT ANSWER" not in answer
+    assert "📌" not in answer
+    assert "No" in answer or "included" in answer.lower()
+
+
+def test_required_q5_room_change_policy():
+    res = handle("What is the hostel room change policy?")
+    assert res["agent"] == "campus_hostel"
+    assert res["escalate"] is False
+    answer = res["answer"]
+    assert "REFERENCE CONTEXT" not in answer
+    assert "EXACT ANSWER" not in answer
+    assert "📌" not in answer
+    assert any(kw in answer.lower() for kw in ["semester", "warden", "permitted", "transfer", "swap"])
+
+
+
+# =====================================================================
 # SYSTEM ACCURACY VERIFICATION BATTERY (35+ TEST SCENARIOS)
 # =====================================================================
 
@@ -338,13 +398,15 @@ def run_all_tests():
         q = test["question"]
         cat = test["category"]
         res = handle(q)
-        ans = res["context"]
+        ans_text = res["answer"]
+        ctx_text = res["context"]
         esc = res["escalate"]
 
         esc_ok = (esc == test["expect_escalate"])
-        kw_ok = any(kw.lower() in ans.lower() for kw in test["expected_kw"])
+        kw_ok = any(kw.lower() in ans_text.lower() or kw.lower() in ctx_text.lower() for kw in test["expected_kw"])
+        clean_ok = ("REFERENCE CONTEXT" not in ans_text) and ("EXACT ANSWER" not in ans_text)
 
-        if esc_ok and kw_ok:
+        if esc_ok and kw_ok and clean_ok:
             status = "✅ PASSED"
             passed_count += 1
         else:
@@ -353,7 +415,8 @@ def run_all_tests():
 
         print(f"\n[{idx:02d}/{len(TEST_CASES)}] [{cat}] -> {status}")
         print(f"     Q: {q}")
-        print(f"     Retrieved Context: {ans.strip()[:140]}...")
+        print(f"     Answer: {ans_text.strip()}")
+        print(f"     Retrieved Context: {ctx_text.strip()[:100]}...")
         print(f"     Confidence: {res['confidence']} | Escalate: {res['escalate']}")
         print("-" * 70)
 
@@ -362,6 +425,7 @@ def run_all_tests():
     print("=" * 70 + "\n")
 
     return failed_count == 0
+
 
 
 if __name__ == "__main__":

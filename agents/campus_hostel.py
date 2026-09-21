@@ -1,6 +1,11 @@
 """
-Campus & Hostel Knowledge & Context Provider Agent for University Multi-FAQ System.
-Provides structured domain knowledge statements to the central Microsoft Foundry Base Agent.
+Campus & Hostel Specialist Agent.
+
+Uses BOTH:
+1. Existing local campus/hostel Markdown FAQ search.
+2. Microsoft Foundry Agent -> Foundry IQ -> Azure AI Search.
+
+The local retrieval logic is preserved.
 """
 
 import os
@@ -8,15 +13,30 @@ import re
 import sys
 from typing import List, Dict, Any
 
-FALLBACK_MESSAGE = "I don't have that information in my current knowledge base."
-AMBIGUOUS_CLARIFICATION_MESSAGE = (
-    "Could you specify what you'd like to know about the campus or hostel — "
-    "for example, room fees, gate pass rules, mess timings, gym, or facilities?"
+from tools.foundry_client import ask_foundry
+from tools.llm_client import chat
+
+
+FALLBACK_MESSAGE = (
+    "I don't have that information in my current knowledge base."
 )
 
-AMBIGUOUS_KEYWORDS = {"hostel", "timings", "timing", "rules", "facilities", "fee", "fees"}
+AMBIGUOUS_CLARIFICATION_MESSAGE = (
+    "Could you specify what you'd like to know about the hostel — "
+    "for example, fees, room types, rules, or facilities?"
+)
 
-# Configure UTF-8 for Windows console output
+AMBIGUOUS_KEYWORDS = {
+    "hostel",
+    "timings",
+    "timing",
+    "rules",
+    "facilities",
+    "fee",
+    "fees",
+}
+
+
 if sys.platform == "win32":
     try:
         sys.stdout.reconfigure(encoding="utf-8")
@@ -24,314 +44,912 @@ if sys.platform == "win32":
         pass
 
 
-def get_kb_filepath(domain: str = "campus_hostel") -> str:
-    """Resolves path for knowledge base markdown file in data/raw."""
-    project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
-    candidate_paths = [
-        os.path.join(project_root, "data", "raw", f"{domain}.md"),
-        os.path.join("data", "raw", f"{domain}.md"),
-        os.path.join(os.path.dirname(__file__), f"{domain}.md"),
-        f"{domain}.md"
-    ]
-    for path in candidate_paths:
-        if os.path.exists(path):
-            return path
-    return candidate_paths[0]
+def _parse_markdown_kb(filepath: str) -> List[Dict[str, Any]]:
+    """Parse FAQ entries from Markdown."""
 
-
-def load_knowledge_sections(filepath: str = None) -> List[Dict[str, Any]]:
-    """
-    Parses structured knowledge sections and factual statements from markdown KB.
-    Returns list of dicts with category, subtopic, and content.
-    """
-    if not filepath:
-        filepath = get_kb_filepath()
-        
-    if not os.path.exists(filepath):
+    if not filepath or not os.path.exists(filepath):
         return []
+
+    entries = []
 
     with open(filepath, "r", encoding="utf-8") as f:
         content = f.read()
 
-    categories = re.split(r'\n(?=##\s+Category:)', content)
-    sections = []
+    blocks = re.split(r"\n(?=##\s+)", content)
 
-    for cat_block in categories:
-        cat_block = cat_block.strip()
-        if not cat_block:
+    for block in blocks:
+        block = block.strip()
+
+        if not block or not block.startswith("##"):
             continue
-        
-        lines = cat_block.split("\n")
-        category_title = lines[0].replace("## Category:", "").strip() if lines[0].startswith("##") else "General"
-        
-        subblocks = re.split(r'\n(?=###\s+)', "\n".join(lines[1:]))
-        for sub in subblocks:
-            sub = sub.strip()
-            if not sub:
-                continue
-            sub_lines = sub.split("\n")
-            if sub_lines[0].startswith("###"):
-                subtopic = sub_lines[0].replace("###", "").strip()
-                body = "\n".join(sub_lines[1:]).strip()
-            else:
-                subtopic = "Overview"
-                body = sub.strip()
 
-            if body:
-                sections.append({
-                    "category": category_title,
-                    "subtopic": subtopic,
-                    "content": body
-                })
+        lines = block.split("\n")
 
-    return sections
+        faq_id = lines[0].replace("##", "").strip()
+
+        question = ""
+        answer_lines = []
+        tags = []
+        in_answer = False
+
+        for line in lines[1:]:
+            line_str = line.strip()
+
+            if line_str.startswith("Q:"):
+                question = line_str[2:].strip()
+                in_answer = False
+
+            elif line_str.startswith("A:"):
+                answer_lines.append(line_str[2:].strip())
+                in_answer = True
+
+            elif line_str.startswith("Tags:"):
+                tags = [
+                    t.strip()
+                    for t in line_str[5:].split(",")
+                    if t.strip()
+                ]
+                in_answer = False
+
+            elif in_answer and line_str:
+                answer_lines.append(line_str)
+
+        if faq_id and question:
+            entries.append(
+                {
+                    "id": faq_id,
+                    "question": question,
+                    "answer": "\n".join(answer_lines),
+                    "tags": tags,
+                }
+            )
+
+    return entries
 
 
-def search_knowledge_context(query: str, top_k: int = 3) -> List[Dict[str, Any]]:
+def search_faq(
+    domain: str,
+    query: str,
+    top_k: int = 3,
+) -> List[Dict[str, Any]]:
     """
-    Searches domain knowledge sections for facts relevant to query.
-    Returns scored knowledge sections for central Microsoft Foundry model context.
+    Existing local campus/hostel search logic.
     """
-    sections = load_knowledge_sections()
-    if not sections:
+
+    project_root = os.path.abspath(
+        os.path.join(os.path.dirname(__file__), "..")
+    )
+
+    candidate_paths = [
+        os.path.join(
+            project_root,
+            "data",
+            "raw",
+            f"{domain}.md",
+        ),
+        os.path.join(
+            "data",
+            "raw",
+            f"{domain}.md",
+        ),
+        os.path.join(
+            os.path.dirname(__file__),
+            f"{domain}.md",
+        ),
+        f"{domain}.md",
+    ]
+
+    kb_path = None
+
+    for path in candidate_paths:
+        if os.path.exists(path):
+            kb_path = path
+            break
+
+    entries = _parse_markdown_kb(kb_path)
+
+    if not entries:
         return []
 
-    query_terms = set(re.findall(r'\w+', query.lower()))
+    query_terms = set(
+        re.findall(
+            r"\w+",
+            query.lower(),
+        )
+    )
+
     if not query_terms:
         return []
 
-    # Explicit Out-of-Scope / Irrelevant keyword check
     irrelevant_words = {
-        "ipl", "cricket", "match", "movie", "movies", "politics", "president", "bollywood",
-        "girlfriend", "boyfriend", "relationship", "gay", "lesbian", "bauna", "dumb", "smart",
-        "love", "dating", "marry", "marriage", "actor", "actress", "song", "game", "madhav", "taneja",
-        "cgpa", "branch", "assignment", "calculus", "physics", "placement", "placements", "mba"
+        "ipl",
+        "cricket",
+        "match",
+        "movie",
+        "movies",
+        "politics",
+        "president",
+        "bollywood",
+        "girlfriend",
+        "boyfriend",
+        "relationship",
+        "love",
+        "dating",
+        "marry",
+        "marriage",
+        "actor",
+        "actress",
+        "song",
+        "game",
+        "madhav",
+        "taneja",
+        "cgpa",
+        "branch",
+        "assignment",
+        "calculus",
+        "physics",
+        "placement",
+        "placements",
+        "mba",
     }
 
     if query_terms.intersection(irrelevant_words):
         return []
 
     valid_domain_terms = {
-        "hostel", "hostles", "hostle", "hstl", "hstls", "room", "rooms", "fee", "fees", "cost", "price", "ac", "non-ac",
-        "air", "cooled", "cubical", "seater", "washroom", "attached", "common", "bunks",
-        "mess", "food", "dining", "meal", "menu", "curfew", "gate", "pass", "leave", "night", "attendance",
-        "silence", "visitor", "visitors", "guest", "guests", "parent", "parents", "scholar", "scholars",
-        "laundry", "clean", "cleaning", "housekeeping", "key", "keys", "reception", "warden", "wardens",
-        "contact", "phone", "number", "director", "administration", "wifi", "internet", "login", "roll", "credentials",
-        "medical", "dispensary", "doctor", "gym", "sports", "sportatorium", "pool", "billiards", "equipment", "app", "apps", "uhostel",
-        "ucampus", "ragging", "fight", "fighting", "discipline", "cake", "birthday", "square", "alcohol",
-        "smoking", "dryer", "dryers", "straightener", "straighteners", "cash", "medicine", "medicines", "weapon", "weapons",
-        "tuck", "shop", "shops", "tuckshop", "weekend", "weekends", "saturday", "sunday", "tuesday", "friday",
-        "badminton", "swimming", "zomato", "swiggy", "ambulance", "furniture", "bed", "cctv", "salon", "atm",
-        "induction", "heater", "kettle", "iron", "refrigerator", "luggage", "vacation", "summer", "winter", "jain",
-        "canteen", "sick", "coupons", "coaching", "racquet", "lockers", "counseling", "insurance", "books", "library",
-        "table", "chair", "mattress", "cupboard", "wardrobe", "hike", "increment", "swap", "shift", "transfer",
-        "prohibited", "banned", "cooking", "kitchen", "holiday", "stay", "keyboard", "theft", "safety", "layout",
-        "approval", "cutoff", "cut-off", "sms", "emergency", "assault", "cameras", "surveillance", "id", "card",
-        "duplicate", "replacement", "lock", "noise", "speaker", "bluetooth", "damage", "helpline", "breakfast",
-        "snacks", "dinner", "cutlery", "utensils", "plate", "khichdi", "rebate", "waiver", "water", "purifier",
-        "cooler", "complaint", "feedback", "exam", "court", "racquets", "cricket", "football", "volleyball", "basketball",
-        "tournaments", "league", "chess", "carrom", "foosball", "first aid", "injury", "floodlights", "attire",
-        "shoes", "otc", "prescription", "wellness", "xerox", "printout", "photocopy", "barber", "haircut"
+        "hostel",
+        "hostles",
+        "hostle",
+        "hstl",
+        "hstls",
+        "room",
+        "rooms",
+        "fee",
+        "fees",
+        "cost",
+        "price",
+        "ac",
+        "non-ac",
+        "mess",
+        "food",
+        "dining",
+        "meal",
+        "menu",
+        "curfew",
+        "gate",
+        "pass",
+        "leave",
+        "night",
+        "attendance",
+        "silence",
+        "visitor",
+        "visitors",
+        "guest",
+        "guests",
+        "parent",
+        "parents",
+        "laundry",
+        "clean",
+        "cleaning",
+        "housekeeping",
+        "key",
+        "keys",
+        "reception",
+        "warden",
+        "wardens",
+        "contact",
+        "phone",
+        "number",
+        "director",
+        "administration",
+        "wifi",
+        "internet",
+        "login",
+        "roll",
+        "credentials",
+        "medical",
+        "dispensary",
+        "doctor",
+        "gym",
+        "sports",
+        "sportatorium",
+        "pool",
+        "billiards",
+        "equipment",
+        "app",
+        "apps",
+        "uhostel",
+        "ucampus",
+        "ragging",
+        "fight",
+        "fighting",
+        "discipline",
+        "cake",
+        "birthday",
+        "square",
+        "alcohol",
+        "smoking",
+        "dryer",
+        "dryers",
+        "straightener",
+        "straighteners",
+        "cash",
+        "medicine",
+        "medicines",
+        "weapon",
+        "weapons",
+        "tuck",
+        "shop",
+        "shops",
+        "tuckshop",
+        "weekend",
+        "weekends",
+        "saturday",
+        "sunday",
+        "tuesday",
+        "friday",
+        "badminton",
+        "swimming",
+        "zomato",
+        "swiggy",
+        "ambulance",
+        "furniture",
+        "bed",
+        "cctv",
+        "salon",
+        "atm",
+        "induction",
+        "heater",
+        "kettle",
+        "iron",
+        "refrigerator",
+        "luggage",
+        "vacation",
+        "summer",
+        "winter",
+        "jain",
+        "canteen",
+        "sick",
+        "coupons",
+        "coaching",
+        "racquet",
+        "lockers",
+        "counseling",
+        "insurance",
+        "books",
+        "library",
+        "table",
+        "chair",
+        "mattress",
+        "cupboard",
+        "wardrobe",
+        "hike",
+        "increment",
+        "swap",
+        "shift",
+        "transfer",
+        "prohibited",
+        "banned",
+        "cooking",
+        "kitchen",
+        "holiday",
+        "stay",
+        "keyboard",
+        "theft",
+        "safety",
+        "layout",
+        "approval",
+        "cutoff",
+        "cut-off",
+        "sms",
+        "emergency",
+        "assault",
+        "cameras",
+        "surveillance",
+        "id",
+        "card",
+        "duplicate",
+        "replacement",
+        "lock",
+        "noise",
+        "speaker",
+        "bluetooth",
+        "damage",
+        "helpline",
+        "breakfast",
+        "snacks",
+        "dinner",
+        "cutlery",
+        "utensils",
+        "plate",
+        "khichdi",
+        "rebate",
+        "waiver",
+        "water",
+        "purifier",
+        "cooler",
+        "complaint",
+        "feedback",
+        "exam",
+        "court",
+        "racquets",
+        "football",
+        "volleyball",
+        "basketball",
+        "tournaments",
+        "league",
+        "chess",
+        "carrom",
+        "foosball",
+        "first",
+        "aid",
+        "injury",
+        "floodlights",
+        "attire",
+        "shoes",
+        "otc",
+        "prescription",
+        "wellness",
+        "xerox",
+        "printout",
+        "photocopy",
+        "barber",
+        "haircut",
     }
 
     if not query_terms.intersection(valid_domain_terms):
         return []
 
-    scored = []
-    for sec in sections:
-        searchable_text = (sec["category"] + " " + sec["subtopic"] + " " + sec["content"]).lower()
-        matched = [t for t in query_terms if t in searchable_text]
-        score = len(matched) / len(query_terms) if query_terms else 0.0
+    scored_results = []
 
-        # Topic-specific exact intent boosters
-        if "library" in query_terms or "books" in query_terms:
-            if "Library" in sec["subtopic"]:
-                score = max(score, 0.99)
+    for entry in entries:
 
-        elif "dispensary" in query_terms or "doctor" in query_terms:
-            if "Medical Dispensary" in sec["subtopic"]:
-                score = max(score, 0.99)
+        searchable_text = (
+            entry["id"]
+            + " "
+            + entry["question"]
+            + " "
+            + " ".join(entry["tags"])
+        ).lower()
 
-        elif any(w in query_terms for w in ["gym", "fitness"]):
-            if "Gym" in sec["subtopic"]:
-                score = max(score, 0.98)
+        matched_terms = [
+            term
+            for term in query_terms
+            if term in searchable_text
+        ]
 
-        elif any(w in query_terms for w in ["laundry", "washing"]):
-            if "Laundry" in sec["subtopic"]:
-                score = max(score, 0.98)
+        score = (
+            len(matched_terms) / len(query_terms)
+            if query_terms
+            else 0.0
+        )
 
-        elif any(w in query_terms for w in ["tuck", "shop", "shops", "tuckshop", "stationery", "xerox", "barber", "salon"]):
-            if "Tuck Shop" in sec["subtopic"]:
-                score = max(score, 0.98)
-
-        elif any(w in query_terms for w in ["wifi", "internet"]):
-            if "Wi-Fi" in sec["subtopic"]:
-                score = max(score, 0.98)
-
-        elif any(w in query_terms for w in ["mess", "dining", "breakfast", "lunch", "dinner"]):
-            if "Mess" in sec["subtopic"]:
-                score = max(score, 0.98)
-
-        elif any(w in query_terms for w in ["gate", "pass"]):
-            if "Gate Pass" in sec["subtopic"]:
-                score = max(score, 0.98)
-
-        elif any(w in query_terms for w in ["pool", "billiards", "sportatorium", "sport"]):
-            if "Sportatorium" in sec["subtopic"]:
-                score = max(score, 0.98)
-
-        elif any(w in query_terms for w in ["ac", "air-conditioned", "cooled", "cubical", "bunks", "seater", "washroom", "allotment"]) or (
-            any(w in query_terms for w in ["fee", "fees", "cost", "price"]) and not query_terms.intersection({"gym", "pool", "billiards", "laundry"})
+        if any(
+            word in query_terms
+            for word in ["gym", "fitness"]
         ):
-            if "Room Types" in sec["category"] or "Fee Structure" in sec["subtopic"]:
+            if (
+                "GYM-001" in entry["id"]
+                or "gym" in entry["tags"]
+            ):
+                score = 1.0
+
+        elif any(
+            word in query_terms
+            for word in [
+                "sportatorium",
+                "pool",
+                "billiards",
+                "court",
+                "ground",
+                "equipment",
+            ]
+        ):
+            if (
+                "SPORTS-001" in entry["id"]
+                or "sportatorium" in entry["tags"]
+                or "pool" in entry["tags"]
+            ):
+                score = 1.0
+
+        elif any(
+            word in query_terms
+            for word in ["laundry", "washing"]
+        ):
+            if (
+                "LAUNDRY-001" in entry["id"]
+                or "laundry" in entry["tags"]
+            ):
+                score = 1.0
+
+        elif any(
+            word in query_terms
+            for word in [
+                "dispensary",
+                "medical",
+                "doctor",
+                "clinic",
+            ]
+        ):
+            if (
+                "MEDICAL-001" in entry["id"]
+                or "medical" in entry["tags"]
+            ):
+                score = 1.0
+
+        elif any(
+            word in query_terms
+            for word in [
+                "tuck",
+                "shop",
+                "shops",
+                "tuckshop",
+            ]
+        ):
+            if (
+                "SHOP-001" in entry["id"]
+                or "tuck shop" in entry["tags"]
+            ):
+                score = 1.0
+
+        elif any(
+            word in query_terms
+            for word in [
+                "app",
+                "apps",
+                "mobile",
+                "playstore",
+                "ucampus",
+                "uhostel",
+            ]
+        ):
+            if "APP-001" in entry["id"]:
+                score = 1.0
+            elif "app" in entry["tags"]:
+                score = max(score, 0.98)
+
+        elif any(
+            word in query_terms
+            for word in ["gate", "pass", "outpass"]
+        ):
+            if (
+                "RULE-002" in entry["id"]
+                or "RULE-006" in entry["id"]
+                or "gate pass" in entry["tags"]
+            ):
+                score = 1.0
+
+        elif any(
+            word in query_terms
+            for word in [
+                "key",
+                "keys",
+                "housekeeping",
+                "cleaning",
+                "reception",
+            ]
+        ):
+            if (
+                "housekeeping" in entry["tags"]
+                or "HOSTEL-004" in entry["id"]
+            ):
+                score = max(score, 0.98)
+
+        elif any(
+            word in query_terms
+            for word in [
+                "ragging",
+                "fight",
+                "fighting",
+                "conduct",
+                "discipline",
+            ]
+        ):
+            if (
+                "discipline" in entry["tags"]
+                or "RULE-005" in entry["id"]
+            ):
+                score = max(score, 0.98)
+
+        elif any(
+            word in query_terms
+            for word in [
+                "mess",
+                "outlet",
+                "outlets",
+                "meal",
+                "menu",
+            ]
+        ):
+            if (
+                "mess" in entry["tags"]
+                or "MESS-001" in entry["id"]
+            ):
+                score = max(score, 0.98)
+
+        elif any(
+            word in query_terms
+            for word in [
+                "parent",
+                "parents",
+                "visitor",
+                "visitors",
+                "guest",
+                "guests",
+            ]
+        ):
+            if any(
+                tag in entry["tags"]
+                for tag in [
+                    "visitor",
+                    "visitors",
+                    "guest",
+                    "guests",
+                    "parents",
+                ]
+            ):
                 score = max(score, 0.95)
 
-        if score > 0.0:
-            item = dict(sec)
-            item["score"] = round(score, 2)
-            scored.append(item)
+        elif any(
+            word in query_terms
+            for word in ["fee", "fees", "cost", "price", "payment"]
+        ):
+            if not query_terms.intersection(
+                {
+                    "gym",
+                    "pool",
+                    "billiards",
+                    "laundry",
+                    "tuck",
+                    "shop",
+                    "dispensary",
+                }
+            ):
+                if "HOSTEL-001" in entry["id"]:
+                    score = 1.0
+                elif (
+                    "fee" in entry["tags"]
+                    or "fees" in entry["tags"]
+                ):
+                    score = max(score, 0.95)
 
-    scored.sort(key=lambda x: x["score"], reverse=True)
-    return scored[:top_k]
+        elif any(
+            word in query_terms
+            for word in [
+                "ac",
+                "seat",
+                "single",
+                "double",
+                "triple",
+                "sharing",
+                "allotment",
+            ]
+        ):
+            if (
+                "allotment" in entry["tags"]
+                or "HOSTEL-002" in entry["id"]
+            ):
+                score = max(score, 0.98)
 
+        elif any(
+            word in query_terms
+            for word in [
+                "hair",
+                "dryer",
+                "dryers",
+                "straightener",
+                "heater",
+                "allowed",
+                "appliance",
+                "alcohol",
+                "smoking",
+                "prohibited",
+                "permitted",
+                "cash",
+                "medicine",
+                "weapon",
+                "weapons",
+            ]
+        ):
+            if (
+                "permitted" in entry["tags"]
+                or "HOSTEL-003" in entry["id"]
+            ):
+                score = max(score, 0.98)
 
-def extract_pinpoint_facts(query: str, sections: List[Dict[str, Any]]) -> List[str]:
-    """
-    Extracts exact bullet points / statement lines that directly answer the query terms.
-    """
-    stopwords = {"what", "is", "the", "are", "for", "a", "an", "and", "or", "in", "on", "at", "to", "of", "do", "how", "can", "i"}
-    query_terms = set(re.findall(r'\w+', query.lower())) - stopwords
-    if not query_terms:
-        return []
+        elif any(
+            word in query_terms
+            for word in [
+                "contact",
+                "phone",
+                "number",
+                "director",
+                "administration",
+            ]
+        ):
+            if (
+                "contact" in entry["tags"]
+                or "CONTACT-001" in entry["id"]
+            ):
+                score = max(score, 0.98)
 
-    line_scores = []
-    for sec in sections:
-        lines = sec["content"].split("\n")
-        for line in lines:
-            line_str = line.strip().lstrip("-* ").strip()
-            if not line_str:
-                continue
-            line_terms = set(re.findall(r'\w+', line_str.lower()))
-            overlap = query_terms.intersection(line_terms)
-            if overlap:
-                score = len(overlap) / len(query_terms)
-                line_scores.append((score, line_str))
+        elif any(
+            word in query_terms
+            for word in ["library", "books"]
+        ):
+            if "library" in entry["tags"]:
+                score = max(score, 0.95)
 
-    line_scores.sort(key=lambda x: x[0], reverse=True)
-    seen = set()
-    exact_facts = []
-    for s, l in line_scores:
-        if s >= 0.2 and l not in seen:
-            seen.add(l)
-            exact_facts.append(l)
+        elif any(
+            word in query_terms
+            for word in ["wifi", "internet"]
+        ):
+            if "wifi" in entry["tags"]:
+                score = max(score, 0.95)
 
-    return exact_facts[:3]
+        elif "hostel" in query_terms:
+            if (
+                "hostel" in entry["tags"]
+                or "HOSTEL" in entry["id"]
+            ):
+                score = max(score, 0.85)
+
+        elif (
+            "rule" in query_terms
+            or "rules" in query_terms
+            or "curfew" in query_terms
+            or "entry" in query_terms
+        ):
+            if (
+                "rule" in entry["tags"]
+                or "RULE" in entry["id"]
+            ):
+                score = max(score, 0.85)
+
+        if score > 0:
+            scored_entry = dict(entry)
+            scored_entry["score"] = round(score, 2)
+            scored_results.append(scored_entry)
+
+    scored_results.sort(
+        key=lambda x: x["score"],
+        reverse=True,
+    )
+
+    return scored_results[:top_k]
 
 
 def _is_short_or_ambiguous(question: str) -> bool:
-    """Checks if a user question is too vague or ambiguous."""
+    """Check for very short ambiguous questions."""
+
     clean_q = question.strip().rstrip("?").lower()
     words = clean_q.split()
-    if len(words) <= 2 and any(w in AMBIGUOUS_KEYWORDS for w in words):
-        return True
-    return False
+
+    return (
+        len(words) <= 2
+        and any(
+            word in AMBIGUOUS_KEYWORDS
+            for word in words
+        )
+    )
+
+
+def _build_local_context(results: list[dict]) -> str:
+    """Convert local results to context."""
+
+    if not results:
+        return "No relevant local campus/hostel FAQ was found."
+
+    parts = []
+
+    for result in results:
+        parts.append(
+            f"[{result.get('id', 'unknown')}]\n"
+            f"Q: {result.get('question', '')}\n"
+            f"A: {result.get('answer', '')}"
+        )
+
+    return "\n\n".join(parts)
+
+
+def _synthesize_answer(
+    question: str,
+    local_context: str,
+    foundry_answer: str,
+) -> str:
+    """Combine local FAQ and Foundry information."""
+
+    messages = [
+        {
+            "role": "system",
+            "content": """
+You are the Campus and Hostel specialist for a university FAQ system.
+
+Use BOTH the local FAQ context and the Microsoft Foundry/Azure AI Search
+answer.
+
+Rules:
+- Do not invent information.
+- Prefer specific university-document information.
+- Use local FAQ information when it adds useful details.
+- If sources conflict, do not invent a resolution.
+- Preserve exact dates, prices, rules and requirements.
+- Give a direct answer.
+- Do not mention internal systems or agents.
+""",
+        },
+        {
+            "role": "user",
+            "content": (
+                f"Question:\n{question}\n\n"
+                f"LOCAL FAQ:\n{local_context}\n\n"
+                f"FOUNDRY / AZURE AI SEARCH:\n"
+                f"{foundry_answer}\n\n"
+                "Give the final answer."
+            ),
+        },
+    ]
+
+    return chat(messages)
 
 
 def handle(question: str) -> Dict[str, Any]:
-    """
-    Handles queries for campus_hostel domain.
-    Returns structured knowledge context ready for consumption by Microsoft Foundry Base Agent.
-    """
+    """Handle campus and hostel questions using hybrid retrieval."""
+
+    if not question or not question.strip():
+        return {
+            "answer": FALLBACK_MESSAGE,
+            "sources": [],
+            "agent": "campus_hostel",
+            "confidence": 0.0,
+            "escalate": True,
+        }
+
     if _is_short_or_ambiguous(question):
         return {
             "answer": AMBIGUOUS_CLARIFICATION_MESSAGE,
-            "context": AMBIGUOUS_CLARIFICATION_MESSAGE,
-            "facts": [],
+            "sources": [],
             "agent": "campus_hostel",
             "confidence": 0.50,
-            "escalate": False
+            "escalate": False,
         }
 
-    matched_sections = search_knowledge_context(question, top_k=3)
+    # ---------------------------------------------------------
+    # LOCAL SEARCH
+    # ---------------------------------------------------------
 
-    if not matched_sections:
+    try:
+        local_results = search_faq(
+            "campus_hostel",
+            question,
+            top_k=3,
+        )
+    except Exception:
+        local_results = []
+
+    local_confidence = 0.0
+
+    if local_results:
+        try:
+            local_confidence = float(
+                local_results[0].get("score", 0.0)
+            )
+        except (TypeError, ValueError):
+            local_confidence = 0.0
+
+    # ---------------------------------------------------------
+    # FOUNDRY / AZURE AI SEARCH
+    # ---------------------------------------------------------
+
+    try:
+        foundry_answer = ask_foundry(question)
+    except Exception:
+        foundry_answer = ""
+
+    # ---------------------------------------------------------
+    # Nothing found
+    # ---------------------------------------------------------
+
+    if not local_results and not foundry_answer:
         return {
             "answer": FALLBACK_MESSAGE,
-            "context": FALLBACK_MESSAGE,
-            "facts": [],
+            "sources": [],
             "agent": "campus_hostel",
             "confidence": 0.0,
-            "escalate": True
+            "escalate": True,
         }
 
-    top_score = matched_sections[0].get("score", 0.0)
-    confidence = float(top_score)
+    local_context = _build_local_context(local_results)
 
-    if confidence < 0.35:
-        return {
-            "answer": FALLBACK_MESSAGE,
-            "context": FALLBACK_MESSAGE,
-            "facts": [],
-            "agent": "campus_hostel",
-            "confidence": confidence,
-            "escalate": True
-        }
+    # ---------------------------------------------------------
+    # FINAL SYNTHESIS
+    # ---------------------------------------------------------
 
-    # Extract pinpoint exact bullet lines
-    pinpoint_facts = extract_pinpoint_facts(question, matched_sections)
+    try:
+        answer = _synthesize_answer(
+            question,
+            local_context,
+            foundry_answer or "No Foundry result available.",
+        )
+    except Exception:
+        answer = foundry_answer or (
+            local_results[0].get("answer", "")
+            if local_results
+            else FALLBACK_MESSAGE
+        )
 
-    formatted_facts = []
-    if pinpoint_facts:
-        formatted_facts.append("📌 EXACT ANSWER / DIRECT FACT:")
-        for fact in pinpoint_facts:
-            formatted_facts.append(f"• {fact}")
-        formatted_facts.append("\n--- REFERENCE CONTEXT ---")
+    sources = [
+        result.get("id")
+        for result in local_results
+        if result.get("id")
+    ]
 
-    for s in matched_sections:
-        formatted_facts.append(f"[{s['category']} -> {s['subtopic']}]\n{s['content']}")
-
-    knowledge_context = "\n".join(formatted_facts)
-
-    # Check for mixed domain note requirement
-    q_lower = question.lower()
-    if "tuition fee" in q_lower or "b.tech" in q_lower or "academic fee" in q_lower:
-        if "hostel" in q_lower or "fee" in q_lower:
-            knowledge_context += "\n\nNote: Information regarding B.Tech tuition fees is outside the scope of Campus & Hostel knowledge base."
+    if foundry_answer:
+        sources.append("foundry-azure-ai-search")
 
     return {
-        "answer": knowledge_context,
-        "context": knowledge_context,
-        "facts": matched_sections,
+        "answer": answer,
+        "sources": sources,
         "agent": "campus_hostel",
-        "confidence": confidence,
-        "escalate": False
+        "confidence": max(
+            local_confidence,
+            0.8 if foundry_answer else 0.0,
+        ),
+        "escalate": False,
     }
 
 
 def print_result(question: str, result: dict):
-    """Formats and displays query context extraction."""
+    """Print result for CLI testing."""
+
     print("\n" + "=" * 60)
-    print(f" QUESTION   : {question}")
+    print(f" QUESTION : {question}")
     print("=" * 60)
     print(f" AGENT      : {result['agent']}")
     print(f" CONFIDENCE : {result['confidence']}")
     print(f" ESCALATE   : {result['escalate']}")
+    print(f" SOURCES    : {result['sources']}")
     print("-" * 60)
-    print(" RETRIEVED KNOWLEDGE CONTEXT FOR MICROSOFT FOUNDRY BASE MODEL:")
-    print(result['context'])
+    print(" ANSWER:")
+    print(result["answer"])
     print("=" * 60 + "\n")
 
 
 def main():
-    """Non-interactive CLI executor for single-query inspection."""
+    """Interactive CLI runner."""
+
     if len(sys.argv) > 1:
         question = " ".join(sys.argv[1:])
-        res = handle(question)
-        print_result(question, res)
-    else:
-        print("Campus & Hostel Specialist Knowledge Provider Agent ready.")
-        print("Usage: python agents/campus_hostel.py '<question>'")
+        result = handle(question)
+        print_result(question, result)
+        return
+
+    print("\n" + "=" * 60)
+    print(" CAMPUS & HOSTEL AGENT — INTERACTIVE TESTER")
+    print(" Type your question and press ENTER.")
+    print(" Type 'exit' or 'quit' to close.")
+    print("=" * 60)
+
+    while True:
+        try:
+            user_input = input(
+                "\nEnter Question > "
+            ).strip()
+
+            if (
+                not user_input
+                or user_input.lower()
+                in ["exit", "quit", "q"]
+            ):
+                print("\nExiting tester. Goodbye!")
+                break
+
+            result = handle(user_input)
+            print_result(user_input, result)
+
+        except (KeyboardInterrupt, EOFError):
+            print("\nExiting. Goodbye!")
+            break
 
 
 if __name__ == "__main__":
