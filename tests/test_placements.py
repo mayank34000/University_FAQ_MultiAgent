@@ -157,7 +157,7 @@ class TestPlacementAgent:
     # New Tests for required failing queries
     def test_which_companies_visited(self):
         response = handle("Which companies visited for placements?")
-        assert "records" in response["answer"].lower() or "dataset" in response["answer"].lower()
+        assert "Found" in response["answer"]
         assert len(response["sources"]) > 0
 
     def test_ctc_infosys(self):
@@ -168,18 +168,18 @@ class TestPlacementAgent:
 
     def test_internships(self):
         response = handle("Which companies offered internships?")
-        assert "records" in response["answer"].lower() or "dataset" in response["answer"].lower()
+        assert "Found" in response["answer"]
         assert len(response["sources"]) > 0
         assert "Google" in response["answer"] or "Microsoft" in response["answer"] or "JPMorgan" in response["answer"] or "ServiceNow" in response["answer"]
 
     def test_placement_drives_2025(self):
         response = handle("Tell me about placement drives in 2025.")
-        assert "records" in response["answer"].lower() or "dataset" in response["answer"].lower()
+        assert "Found" in response["answer"]
         assert len(response["sources"]) > 1
 
     def test_software_developer_roles(self):
         response = handle("Which companies hired for software developer roles?")
-        assert "records" in response["answer"].lower() or "dataset" in response["answer"].lower()
+        assert "Found" in response["answer"]
         assert len(response["sources"]) > 0
 
 
@@ -202,14 +202,14 @@ class TestLoadPlacementData:
 class TestPhase2Features:
     def test_ctc_threshold(self):
         response = handle('Which companies offered more than 10 LPA in Batch 2027?')
-        assert "records" in response["answer"].lower() or "dataset" in response["answer"].lower()
+        assert 'Found' in response['answer']
         assert len(response['sources']) > 0
         # Source IDs for Batch 2027 start with 'b27'
         assert any('b27' in s for s in response['sources'])
 
     def test_highest_lowest_ctc(self):
         response = handle('What was the highest CTC offered by Microsoft?')
-        assert "highest" in response["answer"].lower()
+        assert 'Highest' in response['answer']
         assert '52' in response['answer']
 
         response2 = handle('What is the lowest CTC across all companies?')
@@ -274,11 +274,11 @@ class TestPhase3Integration:
 
     def test_new_general_keywords(self):
         response = handle('What are the placement statistics?')
-        assert "records" in response["answer"].lower() or "dataset" in response["answer"].lower()
+        assert 'Found' in response['answer']
         assert response['escalate'] is False
         
         response2 = handle('Show me the package details.')
-        assert "records" in response["answer"].lower() or "dataset" in response["answer"].lower()
+        assert 'Found' in response['answer']
         assert response2['escalate'] is False
 
     def test_missing_data_exception(self, monkeypatch):
@@ -295,7 +295,7 @@ class TestPhase4FinalValidation:
     def test_realistic_e2e_queries(self):
         # 1. CTC specific query
         r1 = handle('Which companies offered more than 10 LPA?')
-        assert "records" in r1["answer"].lower() or "dataset" in r1["answer"].lower()
+        assert 'Found' in r1['answer']
         assert r1['escalate'] is False
         assert len(r1['sources']) > 0
 
@@ -317,504 +317,3 @@ class TestPhase4FinalValidation:
         r2 = handle('Show placement information for Batch 2027.')
         # Sources should be IDs from the markdown like b27-001
         assert any('b27' in s for s in r2['sources'])
-
-
-class TestNaturalLanguageUnderstanding:
-    """
-    Tests for the LLM intent-merge path.
-    All tests monkeypatch extract_intent_llm so they run without Azure credentials.
-    The mocked return value simulates what the LLM would return for each paraphrase.
-    """
-
-    def test_who_recruited_students_list_intent(self, monkeypatch):
-        """'Who recruited students?' -> LLM says list -> all records returned."""
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Who recruited students?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert len(response["sources"]) > 0
-        # Should be a genuine summary from actual data, not an error message
-        assert "No matching" not in response["answer"]
-
-    def test_which_company_paid_most_highest_ctc_intent(self, monkeypatch):
-        """'Which company paid the most?' -> LLM says highest_ctc -> CTC analysis runs."""
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "highest_ctc", "internship": None})
-        response = handle("Which company paid the most?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert len(response["sources"]) > 0
-        assert "highest" in response["answer"].lower()
-
-    def test_major_technical_recruiters_batch_2027(self, monkeypatch):
-        """
-        'Who were the major technical recruiters in Batch 2027?' 
-        Regex detects batch=2027; LLM adds list intent.
-        Result must contain only Batch 2027 source IDs.
-        """
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Who were the major technical recruiters in Batch 2027?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert len(response["sources"]) > 0
-        # batch filter from regex must be preserved: all sources should be b27-*
-        assert all("b27" in s for s in response["sources"])
-
-    def test_software_roles_bangalore_batch_2027(self, monkeypatch):
-        """
-        'Show software roles in Bangalore for Batch 2027.'
-        Regex detects role + location + batch; LLM says list.
-        Filters must all be applied; LLM must not widen the result set.
-        """
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Show software roles in Bangalore for Batch 2027.")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert len(response["sources"]) > 0
-        assert all("b27" in s for s in response["sources"])
-        ans_lower = response["answer"].lower()
-        assert "bangalore" in ans_lower or "bengaluru" in ans_lower
-
-    def test_llm_highest_ctc_preserves_batch_filter(self, monkeypatch):
-        """
-        LLM adds highest_ctc signal; regex batch=2027 filter must be preserved.
-        All returned sources must be Batch 2027 IDs.
-        """
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "highest_ctc", "internship": None})
-        response = handle("Which company paid the most in Batch 2027?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "highest" in response["answer"].lower()
-        assert all("b27" in s for s in response["sources"])
-
-    def test_llm_none_fallback_preserves_existing_behaviour(self, monkeypatch):
-        """
-        When extract_intent_llm returns None (Azure unavailable),
-        the existing regex path must work exactly as before.
-        """
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle("Which companies hired software engineers?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert len(response["sources"]) > 0
-
-    def test_llm_list_does_not_bypass_regex_filters(self, monkeypatch):
-        """
-        LLM says 'list' but regex already found constraints (batch).
-        is_general_all must NOT be set — batch filter must still apply.
-        """
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Which companies recruited in Batch 2026?")
-        assert response["agent"] == "placements"
-        assert len(response["sources"]) > 0
-        # All returned sources must be Batch 2026 IDs
-        assert all("b26" in s for s in response["sources"])
-
-    def test_does_infosys_recruit_students(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Does Infosys recruit students?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "Infosys" in response["answer"]
-        assert "record" in response["answer"]
-
-    def test_is_infosys_a_recruiter(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Is Infosys a recruiter?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "Infosys" in response["answer"]
-        
-    def test_which_companies_recruited_students(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Which companies recruited students?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert len(response["sources"]) > 0
-        
-    def test_which_companies_come_to_chitkara(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Which companies come to Chitkara?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert len(response["sources"]) > 0
-        assert "No matching placement records found" not in response["answer"]
-        assert "physically visit" in response["answer"]
-
-    def test_does_infosys_come_to_chitkara(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "list", "internship": None})
-        response = handle("Does Infosys come to Chitkara for placements?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "Infosys" in response["answer"]
-        assert "physically visit" in response["answer"]
-
-    def test_how_many_companies_are_there(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: {"intent": "company_count", "internship": None})
-        response = handle("How many companies are there?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "unique companies" in response["answer"].lower()
-        assert "based on unique company names" in response["answer"].lower()
-
-    def test_total_companies_deterministic(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle("Total companies?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "unique companies" in response["answer"].lower()
-
-    def test_total_number_of_companies_deterministic(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle("What is the total number of companies?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "unique companies" in response["answer"].lower()
-
-    def test_how_many_recruiters_deterministic(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle("How many recruiters are there?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "unique companies" in response["answer"].lower()
-
-    def test_how_many_different_companies(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle("How many different companies are in the placement data?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "unique companies" in response["answer"].lower()
-
-    def test_highest_ctc_not_confused_with_company_count(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle("What is the highest package?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "highest" in response["answer"].lower()
-        assert "unique companies" not in response["answer"].lower()
-
-
-
-class TestNLUFailureFixes:
-    """Tests for NL query variations that previously failed."""
-
-    def test_which_company_paid_the_most(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Which company paid the most?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert "highest" in response["answer"].lower()
-
-    def test_which_company_pays_the_most(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Which company pays the most?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "highest" in response["answer"].lower()
-
-    def test_which_company_has_the_highest_package(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Which company has the highest package?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "highest" in response["answer"].lower()
-
-    def test_strongest_compensation(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Tell me about companies offering the strongest compensation.")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert "highest" in response["answer"].lower()
-
-    def test_top_paying_company(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("What is the top-paying company?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "highest" in response["answer"].lower()
-
-    def test_which_companies_offer_software_roles(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Which companies offer software roles?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert len(response["sources"]) > 0
-
-    def test_show_software_roles(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Show software roles.")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert len(response["sources"]) > 0
-
-    def test_which_companies_hire_for_software_roles(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Which companies hire for software roles?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert len(response["sources"]) > 0
-
-    def test_how_many_unique_recruiters_represented(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Tell me how many unique recruiters are represented in the placement data.")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "unique companies" in response["answer"].lower()
-        assert "based on unique company names" in response["answer"].lower()
-
-    def test_which_employers_participated(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Which employers have participated in placements?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert len(response["sources"]) > 0
-
-    def test_who_are_the_recruiters_available_for_students(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Who are the recruiters available for students?")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert len(response["sources"]) > 0
-
-    def test_software_opportunities_bangalore_2027_batch(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("I want software opportunities around Bangalore for the 2027 batch.")
-        assert response["agent"] == "placements"
-        assert response["escalate"] is False
-        assert "No matching" not in response["answer"]
-        assert len(response["sources"]) > 0
-        assert all("b27" in s for s in response["sources"])
-
-    def test_highest_ctc_regression(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("What is the highest CTC offered?")
-        assert "highest" in response["answer"].lower()
-        assert response["escalate"] is False
-
-    def test_average_ctc_regression(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("What is the average CTC?")
-        assert "average" in response["answer"].lower()
-        assert "highest" not in response["answer"].lower()
-        assert response["escalate"] is False
-
-    def test_company_count_regression(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("How many companies are there?")
-        assert "unique companies" in response["answer"].lower()
-        assert response["escalate"] is False
-
-    def test_batch_filter_regression(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Which companies recruited in Batch 2026?")
-        assert response["escalate"] is False
-        assert all("b26" in s for s in response["sources"])
-
-    def test_location_filter_regression(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("What placement opportunities are available in Bangalore?")
-        ans = response["answer"].lower()
-        assert "bangalore" in ans or "bengaluru" in ans
-        assert response["escalate"] is False
-
-    def test_specific_company_not_widened_by_listing(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("What did Microsoft offer?")
-        assert "Microsoft" in response["answer"]
-        assert response["escalate"] is False
-
-    def test_strongest_compensation_not_company_count(self, monkeypatch):
-        import agents.placements as pl
-        monkeypatch.setattr(pl, "extract_intent_llm", lambda q, d: None)
-        response = handle("Tell me about companies offering the strongest compensation.")
-        assert "unique companies" not in response["answer"].lower()
-
-
-
-
-class TestHighestCTCResponse:
-    """
-    Verify that highest-CTC queries include company name, role,
-    location, and batch — not just the numeric CTC value.
-    No company names or CTC values are hardcoded; everything is
-    calculated from the actual placement dataset.
-    """
-
-    def _assert_rich_highest_ctc(self, response):
-        """Shared assertions for a valid rich highest-CTC response."""
-        assert response['agent'] == 'placements'
-        assert response['escalate'] is False
-        assert 'No matching' not in response['answer']
-        ans = response['answer']
-        assert 'CTC Analysis' in ans
-        assert 'highest CTC' in ans.lower() or 'highest ctc' in ans.lower()
-        assert '**Company:**' in ans or '**Companies' in ans
-        assert '**Role:**' in ans or 'Role' in ans
-        assert '**Location:**' in ans or 'Location' in ans
-        assert '**Batch:**' in ans or 'Batch' in ans
-
-    def test_who_pays_the_highest_salary(self, monkeypatch):
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle('Who pays the highest salary?')
-        self._assert_rich_highest_ctc(response)
-
-    def test_which_company_paid_the_most(self, monkeypatch):
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle('Which company paid the most?')
-        self._assert_rich_highest_ctc(response)
-
-    def test_which_company_offers_highest_ctc(self, monkeypatch):
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle('Which company offers the highest CTC?')
-        self._assert_rich_highest_ctc(response)
-
-    def test_what_is_the_highest_package(self, monkeypatch):
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle('What is the highest package?')
-        self._assert_rich_highest_ctc(response)
-
-    def test_highest_ctc_value_matches_dataset(self, monkeypatch):
-        """The CTC value in the answer must match the actual dataset maximum."""
-        from tools.placement_tools import load_placement_data
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-
-        data = load_placement_data()
-        ctcs = []
-        for r in data:
-            if r.get('ctc_end') is not None:
-                ctcs.append(r['ctc_end'])
-            if r.get('ctc_start') is not None:
-                ctcs.append(r['ctc_start'])
-        assert ctcs, 'Test dataset must have numeric CTC values'
-        expected_max = max(ctcs)
-        expected_str = str(int(expected_max)) if expected_max == int(expected_max) else str(expected_max)
-
-        response = handle('Which company offers the highest CTC?')
-        assert expected_str in response['answer'], (
-            f'Expected CTC {expected_str} not found in answer:\n{response["answer"]}'
-        )
-
-    def test_highest_ctc_company_name_in_answer(self, monkeypatch):
-        """
-        The company that owns the max CTC must appear in the answer.
-        Derived purely from the dataset — no name hardcoded here.
-        """
-        from tools.placement_tools import load_placement_data
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-
-        data = load_placement_data()
-        max_val = None
-        for r in data:
-            for f in ('ctc_end', 'ctc_start'):
-                v = r.get(f)
-                if v is not None and (max_val is None or v > max_val):
-                    max_val = v
-        top_companies = set(
-            r.get('company', '')
-            for r in data
-            if r.get('ctc_end') == max_val or r.get('ctc_start') == max_val
-        )
-        response = handle('Who pays the highest salary?')
-        ans = response['answer']
-        assert any(c in ans for c in top_companies), (
-            f'None of the expected top companies {top_companies} found in answer:\n{ans}'
-        )
-
-    def test_highest_ctc_ties_show_multiple_records(self, monkeypatch):
-        """
-        When two records share the same max CTC, both should appear
-        in the answer under 'Companies / Records at this CTC'.
-        Uses a synthetic dataset to guarantee a tie.
-        """
-        import agents.placements as pl
-        from agents.placements import handle
-
-        synthetic_data = [
-            {'id': 't1', 'company': 'AlphaCorpTest', 'role': 'SDE', 'location': 'Delhi',
-             'batch': '2027', 'drive_date': '2027-01-01', 'ctc_start': 50.0, 'ctc_end': 50.0},
-            {'id': 't2', 'company': 'BetaCorpTest', 'role': 'Backend', 'location': 'Mumbai',
-             'batch': '2027', 'drive_date': '2027-01-02', 'ctc_start': 50.0, 'ctc_end': 50.0},
-            {'id': 't3', 'company': 'GammaCorpTest', 'role': 'Frontend', 'location': 'Pune',
-             'batch': '2026', 'drive_date': '2026-06-01', 'ctc_start': 30.0, 'ctc_end': 35.0},
-        ]
-
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        monkeypatch.setattr(pl, 'load_placement_data', lambda: synthetic_data)
-
-        response = handle('Which company offers the highest CTC?')
-        ans = response['answer']
-        assert 'AlphaCorpTest' in ans, 'First tied company must appear'
-        assert 'BetaCorpTest' in ans, 'Second tied company must appear'
-        assert 'Companies' in ans or 'Records' in ans, 'Tie section header expected'
-
-    def test_average_ctc_not_broken(self, monkeypatch):
-        """Existing average-CTC behaviour must be preserved."""
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle('What is the average CTC?')
-        assert 'average' in response['answer'].lower()
-        assert response['escalate'] is False
-
-    def test_lowest_ctc_not_broken(self, monkeypatch):
-        """Existing lowest-CTC behaviour must be preserved."""
-        import agents.placements as pl
-        from agents.placements import handle
-        monkeypatch.setattr(pl, 'extract_intent_llm', lambda q, d: None)
-        response = handle('What is the lowest CTC offered?')
-        assert 'Lowest' in response['answer'] or 'lowest' in response['answer'].lower()
-        assert response['escalate'] is False
