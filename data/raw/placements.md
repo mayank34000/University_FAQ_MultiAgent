@@ -15,12 +15,6 @@ Found **198** matching records across **124** companies.able for the Batch 2027 
 > - Remarks from the source are not treated as verified facts and are intentionally excluded from the factual records.
 > - This is a historical placement-drive dataset, not a guarantee of future hiring or compensation.
 
-## Sources
-
-1. Batch 2026 Placement Data by LetsHelp  
-   https://docs.google.com/spreadsheets/d/1_EJEu2OlKOMiBZh-lKfhvbK2BQjOZw5ahNNxUOucfLk/edit
-2. Batch 2027 Placement Data by LetsHelp  
-   https://docs.google.com/spreadsheets/d/1Uw1HE6h3lbADJ7a2O4O_BCyKX_WWt9Mr3YRCiM-9wAw/edit
 
 ## Field definitions
 
