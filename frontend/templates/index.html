@@ -175,3 +175,35 @@
 <script src="{{ url_for('static', filename='js/app.js') }}"></script>
 </body>
 </html>
+<script>
+    window.addEventListener("pageshow", async function () {
+
+        try {
+
+            const response = await fetch(
+                "/api/check-session",
+                {
+                    method: "GET",
+                    cache: "no-store",
+                    credentials: "same-origin"
+                }
+            );
+
+            if (!response.ok) {
+
+                window.location.replace("/login");
+
+            }
+
+        } catch (error) {
+
+            console.error(
+                "Session check failed:",
+                error
+            );
+
+            window.location.replace("/login");
+        }
+
+    });
+</script>
