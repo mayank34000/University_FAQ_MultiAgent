@@ -83,16 +83,32 @@ def index():
         render_template("index.html")
     )
 
-    # Prevent browser from restoring the authenticated
-    # assistant page after logout.
+    # Prevent browser from caching/restoring
+    # the authenticated assistant page.
     response.headers["Cache-Control"] = (
         "no-store, no-cache, must-revalidate, max-age=0"
     )
-
     response.headers["Pragma"] = "no-cache"
     response.headers["Expires"] = "0"
 
     return response
+
+
+# =========================================================
+# CHECK LOGIN SESSION
+# =========================================================
+
+@app.route("/api/check-session", methods=["GET"])
+def check_session():
+
+    if "user_id" not in session:
+        return jsonify({
+            "authenticated": False
+        }), 401
+
+    return jsonify({
+        "authenticated": True
+    }), 200
 
 
 # =========================================================
@@ -160,8 +176,6 @@ def ask():
             or []
         )
 
-        # Generate follow-ups if they were not
-        # returned by handle_question()
         if not follow_ups:
 
             try:
@@ -180,7 +194,6 @@ def ask():
 
                 follow_ups = []
 
-        # Make sure follow-ups are a list
         if not isinstance(
             follow_ups,
             list
