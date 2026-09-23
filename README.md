@@ -308,3 +308,5 @@ The entire knowledge base is maintained as human-readable Markdown files (`data/
 The keyword sets in the Router Agent (`FEES_ACADEMICS_KEYWORDS`, `PLACEMENT_KEYWORDS`, etc.) are plain Python sets that any developer or administrator can review and extend. The system prompts given to Azure OpenAI are plain strings in the source code, making it straightforward for a human reviewer to audit what instructions the AI is operating under.
 
 Azure AI Foundry and Azure OpenAI are both governed by Microsoft's own Responsible AI commitments, content filtering policies, and usage monitoring — providing an additional institutional layer of oversight above the application level.
+
+
