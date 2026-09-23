@@ -1,17 +1,16 @@
 import os
-import re
 
 from dotenv import load_dotenv
-from azure.identity import InteractiveBrowserCredential
+from azure.identity import (
+    InteractiveBrowserCredential,
+    ManagedIdentityCredential,
+)
 from azure.ai.projects import AIProjectClient
-
 
 load_dotenv()
 
-
 PROJECT_ENDPOINT = os.getenv("FOUNDRY_PROJECT_ENDPOINT")
 AGENT_NAME = os.getenv("FOUNDRY_AGENT_NAME")
-
 
 if not PROJECT_ENDPOINT:
     raise ValueError("FOUNDRY_PROJECT_ENDPOINT is missing from .env")
@@ -20,7 +19,23 @@ if not AGENT_NAME:
     raise ValueError("FOUNDRY_AGENT_NAME is missing from .env")
 
 
-credential = InteractiveBrowserCredential()
+# ---------------------------------------------------------
+# Authentication
+# ---------------------------------------------------------
+# Local PC:
+#   InteractiveBrowserCredential -> your Microsoft account
+#
+# Azure App Service:
+#   ManagedIdentityCredential -> App Service identity
+#   No login required from website users
+# ---------------------------------------------------------
+
+if os.getenv("WEBSITE_HOSTNAME"):
+    print("[AUTH] Running on Azure App Service")
+    credential = ManagedIdentityCredential()
+else:
+    print("[AUTH] Running locally")
+    credential = InteractiveBrowserCredential()
 
 
 project_client = AIProjectClient(
@@ -29,75 +44,27 @@ project_client = AIProjectClient(
 )
 
 
-def ask_foundry(question: str):
-    """
-    Ask the Microsoft Foundry agent.
-
-    The Foundry agent uses:
-        Foundry IQ
-            ↓
-        Azure AI Search
-            ↓
-        University FAQ documents
-
-    Returns:
-        {
-            "answer": "...",
-            "follow_up_questions": [...]
-        }
-    """
+def ask_foundry(question: str) -> str:
 
     if not question or not question.strip():
-        return {
-            "answer": "Please enter a question.",
-            "follow_up_questions": []
-        }
+        return "Please enter a question."
 
-    openai_client = project_client.get_openai_client(
-        agent_name=AGENT_NAME
-    )
+    try:
+        print("[FOUNDRY] Asking university-faq-agent...")
 
-    response = openai_client.responses.create(
-        input=question.strip()
-    )
-
-    output = response.output_text or ""
-
-    return parse_foundry_response(output)
-
-
-def parse_foundry_response(output: str):
-    """
-    Convert Foundry's formatted response into a Python dictionary.
-    """
-
-    answer = output.strip()
-    follow_ups = []
-
-    # Look for FOLLOW_UPS section
-    if "FOLLOW_UPS:" in output:
-        answer_part, followup_part = output.split(
-            "FOLLOW_UPS:",
-            1
+        openai_client = project_client.get_openai_client(
+            agent_name=AGENT_NAME
         )
 
-        answer = answer_part.replace(
-            "ANSWER:",
-            ""
-        ).strip()
-
-        # Extract numbered questions
-        matches = re.findall(
-            r"(?:^|\n)\s*\d+\.\s*(.+)",
-            followup_part
+        response = openai_client.responses.create(
+            input=question.strip()
         )
 
-        follow_ups = [
-            question.strip()
-            for question in matches[:3]
-        ]
+        if response.output_text:
+            return response.output_text
 
-    return {
-        "answer": answer,
-        "follow_up_questions": follow_ups
-    }
+        return "I could not get a response from the University FAQ agent."
+
+    except Exception as e:
+        print(f"[FOUNDRY ERROR] {e}")
+        raise
